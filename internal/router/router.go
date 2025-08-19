@@ -3,6 +3,7 @@ package router
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"tappyone/internal/handlers"
 	"tappyone/internal/middleware"
 	"tappyone/internal/services"
@@ -42,7 +43,7 @@ func Setup(container *services.Container) *gin.Engine {
 
 	// Servir arquivos estáticos (uploads)
 	r.Static("/uploads", "./uploads")
-	
+
 	// Rotas públicas
 	public := r.Group("/api")
 	{
@@ -58,16 +59,16 @@ func Setup(container *services.Container) *gin.Engine {
 	// Webhook para receber mensagens da WAHA API
 	r.POST("/webhook/whatsapp", func(c *gin.Context) {
 		log.Printf("[WEBHOOK] Received WhatsApp webhook")
-		
+
 		var payload map[string]interface{}
 		if err := c.ShouldBindJSON(&payload); err != nil {
 			log.Printf("[WEBHOOK] Error parsing payload: %v", err)
 			c.JSON(400, gin.H{"error": "Invalid payload"})
 			return
 		}
-		
+
 		log.Printf("[WEBHOOK] Payload: %+v", payload)
-		
+
 		// Verificar se é uma mensagem nova
 		if event, ok := payload["event"].(string); ok && event == "message" {
 			if data, ok := payload["data"].(map[string]interface{}); ok {
@@ -77,14 +78,14 @@ func Setup(container *services.Container) *gin.Engine {
 					if len(session) > 5 && session[:5] == "user_" {
 						userID := session[5:]
 						log.Printf("[WEBHOOK] Broadcasting message to user: %s", userID)
-						
+
 						// Enviar via WebSocket
 						handlers.BroadcastNewMessage(userID, data)
 					}
 				}
 			}
 		}
-		
+
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
@@ -97,7 +98,7 @@ func Setup(container *services.Container) *gin.Engine {
 	{
 		// Auth
 		protected.GET("/auth/me", authHandler.Me)
-		
+
 		// Usuários
 		users := protected.Group("/users")
 		{
@@ -129,7 +130,7 @@ func Setup(container *services.Container) *gin.Engine {
 			kanban.GET("/quadros/:id", kanbanHandler.GetQuadro)
 			kanban.PUT("/quadros/:id", kanbanHandler.UpdateQuadro)
 			kanban.DELETE("/quadros/:id", kanbanHandler.DeleteQuadro)
-			
+
 			// Colunas
 			kanban.POST("/column-create", kanbanHandler.CreateColumn)
 			kanban.POST("/column-edit", kanbanHandler.EditColumn)
@@ -144,6 +145,7 @@ func Setup(container *services.Container) *gin.Engine {
 		connections := protected.Group("/connections")
 		{
 			connections.GET("/", connectionHandler.GetUserConnections)
+			connections.GET("/whatsapp", connectionHandler.GetUserConnection)
 			connections.GET("/:platform", connectionHandler.GetUserConnection)
 			connections.POST("/", connectionHandler.CreateOrUpdateConnection)
 			connections.PUT("/:platform", connectionHandler.UpdateConnection)
@@ -182,53 +184,69 @@ func Setup(container *services.Container) *gin.Engine {
 			respostasRapidas.PUT("/:id/acoes/reorder", respostaRapidaHandler.ReorderAcoes)
 		}
 
-		// WhatsApp API (sem middleware JWT, usa autenticação manual)
-		whatsappAPI := r.Group("/api/whatsapp")
+		// WhatsApp API (com middleware JWT)
+		whatsappAPI := protected.Group("/whatsapp")
 		{
 			whatsappAPI.GET("/chats", func(c *gin.Context) {
 				log.Printf("[WHATSAPP] GET /chats - Starting request")
-				
-				// Autenticação via header Authorization
-				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
-				if err != nil {
-					log.Printf("[WHATSAPP] GET /chats - Auth failed: %v", err)
-					c.JSON(401, gin.H{"error": "Invalid token", "details": err.Error()})
+
+				userID, exists := c.Get("userID")
+				if !exists {
+					c.JSON(401, gin.H{"error": "User not authenticated"})
 					return
 				}
-				
+
+				log.Printf("[WHATSAPP] GET /chats - UserID: %s, SessionName: user_%s", userID, userID)
 				sessionName := fmt.Sprintf("user_%s", userID)
-				log.Printf("[WHATSAPP] GET /chats - UserID: %s, SessionName: %s", userID, sessionName)
-				
-				var chats interface{}
-				chats, err = container.WhatsAppService.GetChats(sessionName)
+
+				chats, err := container.WhatsAppService.GetChats(sessionName)
 				if err != nil {
-					log.Printf("[WHATSAPP] GET /chats - WhatsAppService.GetChats failed: %v", err)
+					log.Printf("[WHATSAPP] GET /chats - Error: %v", err)
 					c.JSON(500, gin.H{"error": err.Error()})
 					return
 				}
-				
-				log.Printf("[WHATSAPP] GET /chats - Success, returning chats")
+
 				c.JSON(200, chats)
 			})
-			
+
 			whatsappAPI.GET("/contacts", func(c *gin.Context) {
-				// Autenticação via header Authorization
-				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
-				if err != nil {
-					c.JSON(401, gin.H{"error": "Invalid token", "details": err.Error()})
+				userID, exists := c.Get("userID")
+				if !exists {
+					c.JSON(401, gin.H{"error": "User not authenticated"})
 					return
 				}
 				sessionName := fmt.Sprintf("user_%s", userID)
-				
+
 				var contacts interface{}
-				contacts, err = container.WhatsAppService.GetContacts(sessionName)
+				contacts, err := container.WhatsAppService.GetContacts(sessionName)
 				if err != nil {
 					c.JSON(500, gin.H{"error": err.Error()})
 					return
 				}
 				c.JSON(200, contacts)
 			})
-			
+
+			whatsappAPI.GET("/groups", func(c *gin.Context) {
+				log.Printf("[WHATSAPP] GET /groups - Starting request")
+
+				userID, exists := c.Get("userID")
+				if !exists {
+					c.JSON(401, gin.H{"error": "User not authenticated"})
+					return
+				}
+				sessionName := fmt.Sprintf("user_%s", userID)
+				log.Printf("[WHATSAPP] GET /groups - UserID: %s, SessionName: %s", userID, sessionName)
+
+				var groups interface{}
+				groups, err := container.WhatsAppService.GetGroups(sessionName)
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, groups)
+			})
+
+
 			whatsappAPI.GET("/chats/:chatId/messages", func(c *gin.Context) {
 				// Autenticação via header Authorization
 				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
@@ -238,16 +256,30 @@ func Setup(container *services.Container) *gin.Engine {
 				}
 				sessionName := fmt.Sprintf("user_%s", userID)
 				chatID := c.Param("chatId")
-				
+
 				var messages interface{}
-				messages, err = container.WhatsAppService.GetChatMessages(sessionName, chatID)
+				// Parse query parameters for pagination
+				limitStr := c.DefaultQuery("limit", "50")
+				offsetStr := c.DefaultQuery("offset", "0")
+				
+				limit, err := strconv.Atoi(limitStr)
+				if err != nil {
+					limit = 50
+				}
+				
+				offset, err := strconv.Atoi(offsetStr)
+				if err != nil {
+					offset = 0
+				}
+				
+				messages, err = container.WhatsAppService.GetChatMessages(sessionName, chatID, limit, offset)
 				if err != nil {
 					c.JSON(500, gin.H{"error": err.Error()})
 					return
 				}
 				c.JSON(200, messages)
 			})
-			
+
 			whatsappAPI.POST("/chats/:chatId/messages", func(c *gin.Context) {
 				// Autenticação via header Authorization
 				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
@@ -257,24 +289,33 @@ func Setup(container *services.Container) *gin.Engine {
 				}
 				sessionName := fmt.Sprintf("user_%s", userID)
 				chatID := c.Param("chatId")
-				
+
 				var req struct {
-					Text string `json:"text" binding:"required"`
+					Text     string   `json:"text" binding:"required"`
+					ReplyTo  string   `json:"replyTo,omitempty"`
+					Mentions []string `json:"mentions,omitempty"`
 				}
 				if err := c.ShouldBindJSON(&req); err != nil {
 					c.JSON(400, gin.H{"error": "Invalid request"})
 					return
 				}
-				
+
 				var result interface{}
-				result, err = container.WhatsAppService.SendMessage(sessionName, chatID, req.Text)
+				if req.ReplyTo != "" {
+					result, err = container.WhatsAppService.SendReplyMessage(sessionName, chatID, req.Text, req.ReplyTo)
+				} else if len(req.Mentions) > 0 {
+					result, err = container.WhatsAppService.SendMessageWithMentions(sessionName, chatID, req.Text, req.Mentions)
+				} else {
+					result, err = container.WhatsAppService.SendMessage(sessionName, chatID, req.Text)
+				}
+				
 				if err != nil {
 					c.JSON(500, gin.H{"error": err.Error()})
 					return
 				}
 				c.JSON(200, result)
 			})
-			
+
 			// Endpoint para marcar mensagens como lidas
 			whatsappAPI.POST("/chats/:chatId/read", func(c *gin.Context) {
 				userID, exists := c.Get("userID")
@@ -282,10 +323,10 @@ func Setup(container *services.Container) *gin.Engine {
 					c.JSON(401, gin.H{"error": "User not authenticated"})
 					return
 				}
-				
+
 				sessionName := fmt.Sprintf("user_%s", userID)
 				chatID := c.Param("chatId")
-				
+
 				result, err := container.WhatsAppService.MarkAsRead(sessionName, chatID)
 				if err != nil {
 					c.JSON(500, gin.H{"error": err.Error()})
@@ -293,62 +334,320 @@ func Setup(container *services.Container) *gin.Engine {
 				}
 				c.JSON(200, result)
 			})
+
+			// Rotas de mídia
+			whatsappAPI.POST("/chats/:chatId/voice", whatsappHandler.SendVoiceMessage)
+			whatsappAPI.POST("/chats/:chatId/image", whatsappHandler.SendImageMessage)
+			whatsappAPI.POST("/chats/:chatId/video", whatsappMediaHandler.SendVideoMessage)
+			whatsappAPI.POST("/chats/:chatId/file", whatsappHandler.SendFileMessage)
+			whatsappAPI.GET("/media/:mediaId", whatsappHandler.DownloadMedia)
 			
-			// Endpoint para obter informações de presença
-			whatsappAPI.GET("/presence", func(c *gin.Context) {
-				userID, exists := c.Get("userID")
-				if !exists {
-					c.JSON(401, gin.H{"error": "User not authenticated"})
-					return
-				}
-				
-				sessionName := fmt.Sprintf("user_%s", userID)
-				result, err := container.WhatsAppService.GetPresence(sessionName)
+			// Reações
+			whatsappAPI.PUT("/messages/:messageId/reaction", func(c *gin.Context) {
+				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
 				if err != nil {
-					c.JSON(500, gin.H{"error": err.Error()})
+					c.JSON(401, gin.H{"error": "Invalid token"})
 					return
 				}
-				c.JSON(200, result)
-			})
-			
-			// Endpoint para definir status de digitação
-			whatsappAPI.POST("/chats/:chatId/typing", func(c *gin.Context) {
-				userID, exists := c.Get("userID")
-				if !exists {
-					c.JSON(401, gin.H{"error": "User not authenticated"})
-					return
-				}
-				
 				sessionName := fmt.Sprintf("user_%s", userID)
-				chatID := c.Param("chatId")
-				
+				messageID := c.Param("messageId")
+
 				var req struct {
-					Presence string `json:"presence" binding:"required"` // "typing" ou "paused"
+					Reaction string `json:"reaction"`
 				}
 				if err := c.ShouldBindJSON(&req); err != nil {
 					c.JSON(400, gin.H{"error": "Invalid request"})
 					return
 				}
-				
-				result, err := container.WhatsAppService.SetTyping(sessionName, chatID, req.Presence)
+
+				if req.Reaction == "" {
+					err = container.WhatsAppService.RemoveReaction(sessionName, messageID)
+				} else {
+					err = container.WhatsAppService.AddReaction(sessionName, messageID, req.Reaction)
+				}
+
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, gin.H{"success": true})
+			})
+
+			// Encaminhar mensagens
+			whatsappAPI.POST("/messages/:messageId/forward", func(c *gin.Context) {
+				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
+				if err != nil {
+					c.JSON(401, gin.H{"error": "Invalid token"})
+					return
+				}
+				sessionName := fmt.Sprintf("user_%s", userID)
+				messageID := c.Param("messageId")
+
+				var req struct {
+					ToChatID string `json:"toChatId" binding:"required"`
+				}
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "Invalid request"})
+					return
+				}
+
+				result, err := container.WhatsAppService.ForwardMessage(sessionName, req.ToChatID, messageID)
 				if err != nil {
 					c.JSON(500, gin.H{"error": err.Error()})
 					return
 				}
 				c.JSON(200, result)
 			})
-			
-			// Rotas de mídia
-			whatsappAPI.POST("/upload", whatsappMediaHandler.UploadFile)
-			whatsappAPI.POST("/chats/:chatId/media", whatsappMediaHandler.UploadAndSendMedia)
-			whatsappAPI.POST("/chats/:chatId/image", whatsappMediaHandler.SendImage)
-			whatsappAPI.POST("/chats/:chatId/file", whatsappMediaHandler.SendFile)
-			whatsappAPI.POST("/chats/:chatId/voice", whatsappMediaHandler.SendVoice)
-			whatsappAPI.POST("/chats/:chatId/video", whatsappMediaHandler.SendVideo)
+
+			// Editar mensagens
+			whatsappAPI.PUT("/chats/:chatId/messages/:messageId", func(c *gin.Context) {
+				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
+				if err != nil {
+					c.JSON(401, gin.H{"error": "Invalid token"})
+					return
+				}
+				sessionName := fmt.Sprintf("user_%s", userID)
+				chatID := c.Param("chatId")
+				messageID := c.Param("messageId")
+
+				var req struct {
+					Text string `json:"text" binding:"required"`
+				}
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "Invalid request"})
+					return
+				}
+
+				result, err := container.WhatsAppService.EditMessage(sessionName, chatID, messageID, req.Text)
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, result)
+			})
+
+			// Deletar mensagens
+			whatsappAPI.DELETE("/chats/:chatId/messages/:messageId", func(c *gin.Context) {
+				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
+				if err != nil {
+					c.JSON(401, gin.H{"error": "Invalid token"})
+					return
+				}
+				sessionName := fmt.Sprintf("user_%s", userID)
+				chatID := c.Param("chatId")
+				messageID := c.Param("messageId")
+
+				result, err := container.WhatsAppService.DeleteMessage(sessionName, chatID, messageID)
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, result)
+			})
+
+			// Favoritar mensagens
+			whatsappAPI.PUT("/star", func(c *gin.Context) {
+				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
+				if err != nil {
+					c.JSON(401, gin.H{"error": "Invalid token"})
+					return
+				}
+				sessionName := fmt.Sprintf("user_%s", userID)
+
+				var req struct {
+					MessageID string `json:"messageId" binding:"required"`
+					Star      bool   `json:"star"`
+				}
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "Invalid request"})
+					return
+				}
+
+				result, err := container.WhatsAppService.StarMessage(sessionName, req.MessageID, req.Star)
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, result)
+			})
+
+			// Enviar contato
+			whatsappAPI.POST("/sendContactVcard", func(c *gin.Context) {
+				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
+				if err != nil {
+					c.JSON(401, gin.H{"error": "Invalid token"})
+					return
+				}
+				sessionName := fmt.Sprintf("user_%s", userID)
+
+				var req struct {
+					ChatID    string `json:"chatId" binding:"required"`
+					ContactID string `json:"contactId" binding:"required"`
+					Name      string `json:"name" binding:"required"`
+				}
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "Invalid request"})
+					return
+				}
+
+				result, err := container.WhatsAppService.SendContactVcard(sessionName, req.ChatID, req.ContactID, req.Name)
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, result)
+			})
+
+			// Enviar localização
+			whatsappAPI.POST("/sendLocation", func(c *gin.Context) {
+				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
+				if err != nil {
+					c.JSON(401, gin.H{"error": "Invalid token"})
+					return
+				}
+				sessionName := fmt.Sprintf("user_%s", userID)
+
+				var req struct {
+					ChatID    string  `json:"chatId" binding:"required"`
+					Latitude  float64 `json:"latitude" binding:"required"`
+					Longitude float64 `json:"longitude" binding:"required"`
+					Title     string  `json:"title"`
+					Address   string  `json:"address"`
+				}
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "Invalid request"})
+					return
+				}
+
+				result, err := container.WhatsAppService.SendLocation(sessionName, req.ChatID, req.Latitude, req.Longitude, req.Title, req.Address)
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, result)
+			})
+
+			// Enviar enquete
+			whatsappAPI.POST("/sendPoll", func(c *gin.Context) {
+				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
+				if err != nil {
+					c.JSON(401, gin.H{"error": "Invalid token"})
+					return
+				}
+				sessionName := fmt.Sprintf("user_%s", userID)
+
+				var req struct {
+					ChatID          string   `json:"chatId" binding:"required"`
+					Name            string   `json:"name" binding:"required"`
+					Options         []string `json:"options" binding:"required"`
+					MultipleAnswers bool     `json:"multipleAnswers"`
+				}
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "Invalid request"})
+					return
+				}
+
+				result, err := container.WhatsAppService.SendPoll(sessionName, req.ChatID, req.Name, req.Options, req.MultipleAnswers)
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, result)
+			})
+
+			// Buscar mensagens
+			whatsappAPI.GET("/chats/:chatId/messages/search", func(c *gin.Context) {
+				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
+				if err != nil {
+					c.JSON(401, gin.H{"error": "Invalid token"})
+					return
+				}
+				sessionName := fmt.Sprintf("user_%s", userID)
+				chatID := c.Param("chatId")
+				query := c.Query("q")
+
+				if query == "" {
+					c.JSON(400, gin.H{"error": "Query parameter 'q' is required"})
+					return
+				}
+
+				// Parse pagination parameters
+				limitStr := c.DefaultQuery("limit", "50")
+				offsetStr := c.DefaultQuery("offset", "0")
+				
+				limit, err := strconv.Atoi(limitStr)
+				if err != nil {
+					limit = 50
+				}
+				
+				offset, err := strconv.Atoi(offsetStr)
+				if err != nil {
+					offset = 0
+				}
+
+				result, err := container.WhatsAppService.SearchMessages(sessionName, chatID, query, limit, offset)
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, result)
+			})
+
 		}
+
+		// Reply endpoint
+		whatsappAPI.POST("/reply", func(c *gin.Context) {
+			userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
+			if err != nil {
+				c.JSON(401, gin.H{"error": "Invalid token"})
+				return
+			}
+			sessionName := fmt.Sprintf("user_%s", userID)
+
+			var req struct {
+				ChatID  string `json:"chatId" binding:"required"`
+				Text    string `json:"text" binding:"required"`
+				ReplyTo string `json:"replyTo" binding:"required"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(400, gin.H{"error": "Invalid request"})
+				return
+			}
+
+			result, err := container.WhatsAppService.SendReplyMessage(sessionName, req.ChatID, req.Text, req.ReplyTo)
+			if err != nil {
+				c.JSON(500, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(200, result)
+		})
+
+		// SendSeen endpoint
+		whatsappAPI.POST("/sendSeen", func(c *gin.Context) {
+			userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
+			if err != nil {
+				c.JSON(401, gin.H{"error": "Invalid token"})
+				return
+			}
+			sessionName := fmt.Sprintf("user_%s", userID)
+
+			var req struct {
+				ChatID     string   `json:"chatId" binding:"required"`
+				MessageIDs []string `json:"messageIds" binding:"required"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(400, gin.H{"error": "Invalid request"})
+				return
+			}
+
+			err = container.WhatsAppService.SendSeen(sessionName, req.ChatID, req.MessageIDs)
+			if err != nil {
+				c.JSON(500, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(200, gin.H{"success": true})
+		})
 	}
-
-
 
 	// Webhooks
 	webhooks := r.Group("/webhooks")

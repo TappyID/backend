@@ -1,12 +1,17 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
 	"net/http"
-	"tappyone/internal/models"
-	"tappyone/internal/services"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"tappyone/internal/models"
+	"tappyone/internal/services"
 )
 
 // AuthHandler gerencia autenticação
@@ -137,8 +142,279 @@ func (h *WhatsAppHandler) GetQRCode(c *gin.Context) {
 }
 
 func (h *WhatsAppHandler) WebhookHandler(c *gin.Context) {
-	// TODO: Implementar webhook do WhatsApp
-	c.JSON(http.StatusOK, gin.H{"message": "Webhook WhatsApp processado"})
+	var webhookData map[string]interface{}
+	if err := c.ShouldBindJSON(&webhookData); err != nil {
+		log.Printf("Erro ao fazer bind do webhook: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	log.Printf("Webhook recebido: %+v", webhookData)
+
+	// Verificar se é uma mensagem de mídia
+	if event, ok := webhookData["event"].(string); ok && event == "message" {
+		if data, ok := webhookData["data"].(map[string]interface{}); ok {
+			if msgType, ok := data["type"].(string); ok {
+				// Processar mensagens de mídia
+				if msgType == "image" || msgType == "video" || msgType == "audio" || msgType == "voice" || msgType == "document" {
+					go h.processMediaMessage(data)
+				}
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Webhook processado"})
+}
+
+func (h *WhatsAppHandler) processMediaMessage(data map[string]interface{}) {
+	// Extrair informações da mensagem
+	chatID, _ := data["from"].(string)
+	messageID, _ := data["id"].(string)
+	msgType, _ := data["type"].(string)
+	
+	log.Printf("Processando mídia: chatID=%s, messageID=%s, type=%s", chatID, messageID, msgType)
+
+	// Se há um fileId ou mediaUrl, fazer download da mídia
+	var fileID string
+	if media, ok := data["media"].(map[string]interface{}); ok {
+		if id, ok := media["id"].(string); ok {
+			fileID = id
+		}
+	}
+
+	if fileID != "" {
+		// Download da mídia via WAHA API
+		mediaData, filename, err := h.whatsappService.DownloadMedia("default", fileID)
+		if err != nil {
+			log.Printf("Erro ao fazer download da mídia %s: %v", fileID, err)
+			return
+		}
+
+		// Salvar mídia no blob storage (uploads/)
+		savedPath, err := h.saveMediaToStorage(mediaData, filename, msgType)
+		if err != nil {
+			log.Printf("Erro ao salvar mídia: %v", err)
+			return
+		}
+
+		log.Printf("Mídia salva em: %s", savedPath)
+		
+		// Aqui você pode salvar informações da mídia no banco de dados
+		// ou enviar via WebSocket para o frontend
+	}
+}
+
+func (h *WhatsAppHandler) saveMediaToStorage(data []byte, filename, msgType string) (string, error) {
+	// Criar diretório se não existir
+	uploadDir := "./uploads"
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		return "", err
+	}
+
+	// Gerar nome único para o arquivo
+	ext := filepath.Ext(filename)
+	if ext == "" {
+		// Definir extensão baseada no tipo
+		switch msgType {
+		case "image":
+			ext = ".jpg"
+		case "video":
+			ext = ".mp4"
+		case "audio", "voice":
+			ext = ".ogg"
+		default:
+			ext = ".bin"
+		}
+	}
+
+	uniqueFilename := fmt.Sprintf("%s-%d%s", 
+		strings.TrimSuffix(filename, ext), 
+		time.Now().Unix(), 
+		ext)
+	
+	filePath := filepath.Join(uploadDir, uniqueFilename)
+
+	// Salvar arquivo
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return "", err
+	}
+
+	return filePath, nil
+}
+
+// SendVoiceMessage envia mensagem de voz
+func (h *WhatsAppHandler) SendVoiceMessage(c *gin.Context) {
+	log.Printf("SendVoiceMessage: Iniciando processamento")
+	
+	// Obter userID do contexto de autenticação
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	
+	sessionName := fmt.Sprintf("user_%s", userID)
+	chatID := c.PostForm("chatId")
+	
+	log.Printf("SendVoiceMessage: sessionName=%s, chatID=%s", sessionName, chatID)
+	
+	if chatID == "" {
+		log.Printf("SendVoiceMessage: Erro - chatId não fornecido")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "chatId é obrigatório"})
+		return
+	}
+	
+	// Receber arquivo de áudio
+	file, header, err := c.Request.FormFile("audio")
+	if err != nil {
+		log.Printf("SendVoiceMessage: Erro ao receber arquivo de áudio: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Arquivo de áudio é obrigatório"})
+		return
+	}
+	defer file.Close()
+	
+	// Ler conteúdo do arquivo
+	audioData := make([]byte, header.Size)
+	_, err = file.Read(audioData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao ler arquivo"})
+		return
+	}
+	
+	// Enviar via WAHA API
+	err = h.whatsappService.SendVoiceMessage(sessionName, chatID, audioData, header.Filename)
+	if err != nil {
+		log.Printf("[WHATSAPP] SendVoiceMessage - Error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao enviar áudio"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"message": "Áudio enviado com sucesso"})
+}
+
+// SendImageMessage envia imagem
+func (h *WhatsAppHandler) SendImageMessage(c *gin.Context) {
+	log.Printf("SendImageMessage: Iniciando processamento")
+	
+	// Obter userID do contexto de autenticação
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	
+	sessionName := fmt.Sprintf("user_%s", userID)
+	chatID := c.PostForm("chatId")
+	caption := c.PostForm("caption")
+	
+	log.Printf("SendImageMessage: sessionName=%s, chatID=%s, caption=%s", sessionName, chatID, caption)
+	
+	if chatID == "" {
+		log.Printf("SendImageMessage: Erro - chatId não fornecido")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "chatId é obrigatório"})
+		return
+	}
+	
+	// Receber arquivo de imagem
+	file, header, err := c.Request.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Arquivo de imagem é obrigatório"})
+		return
+	}
+	defer file.Close()
+	
+	// Ler conteúdo do arquivo
+	imageData := make([]byte, header.Size)
+	_, err = file.Read(imageData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao ler arquivo"})
+		return
+	}
+	
+	// Enviar via WAHA API
+	err = h.whatsappService.SendImageMessage(sessionName, chatID, imageData, header.Filename, caption)
+	if err != nil {
+		log.Printf("[WHATSAPP] SendImageMessage - Error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao enviar imagem"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"message": "Imagem enviada com sucesso"})
+}
+
+// SendFileMessage envia arquivo
+func (h *WhatsAppHandler) SendFileMessage(c *gin.Context) {
+	// Obter userID do contexto de autenticação
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	
+	sessionName := fmt.Sprintf("user_%s", userID)
+	chatID := c.PostForm("chatId")
+	caption := c.PostForm("caption")
+	
+	if chatID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "chatId é obrigatório"})
+		return
+	}
+	
+	// Receber arquivo
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Arquivo é obrigatório"})
+		return
+	}
+	defer file.Close()
+	
+	// Ler conteúdo do arquivo
+	fileData := make([]byte, header.Size)
+	_, err = file.Read(fileData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao ler arquivo"})
+		return
+	}
+	
+	// Enviar via WAHA API
+	err = h.whatsappService.SendFileMessage(sessionName, chatID, fileData, header.Filename, caption)
+	if err != nil {
+		log.Printf("[WHATSAPP] SendFileMessage - Error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao enviar arquivo"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"message": "Arquivo enviado com sucesso"})
+}
+
+// DownloadMedia baixa mídia
+func (h *WhatsAppHandler) DownloadMedia(c *gin.Context) {
+	// Obter userID do contexto de autenticação
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	
+	sessionName := fmt.Sprintf("user_%s", userID)
+	mediaID := c.Param("mediaId")
+	
+	if mediaID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "mediaId é obrigatório"})
+		return
+	}
+	
+	// Baixar via WAHA API
+	mediaData, filename, err := h.whatsappService.DownloadMedia(sessionName, mediaID)
+	if err != nil {
+		log.Printf("[WHATSAPP] DownloadMedia - Error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao baixar mídia"})
+		return
+	}
+	
+	// Retornar arquivo
+	c.Header("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	c.Data(http.StatusOK, "application/octet-stream", mediaData)
 }
 
 // KanbanHandler gerencia Kanban

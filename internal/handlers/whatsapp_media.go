@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"tappyone/internal/services"
 	"tappyone/internal/utils"
@@ -60,7 +62,21 @@ func (h *WhatsAppMediaHandler) GetChatMessages(c *gin.Context) {
 	sessionName := "user_" + c.GetString("user_id")
 	chatID := c.Param("chatId")
 	
-	messages, err := h.whatsappService.GetChatMessages(sessionName, chatID)
+	// Parse pagination parameters
+	limitStr := c.DefaultQuery("limit", "50")
+	offsetStr := c.DefaultQuery("offset", "0")
+	
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		limit = 50
+	}
+	
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil {
+		offset = 0
+	}
+	
+	messages, err := h.whatsappService.GetChatMessages(sessionName, chatID, limit, offset)
 	if err != nil {
 		log.Printf("[HANDLER] GetChatMessages error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -353,17 +369,16 @@ func (h *WhatsAppMediaHandler) UploadAndSendMedia(c *gin.Context) {
 	fileURL := baseURL + "/uploads/" + filename
 
 	// Enviar mídia baseado no tipo
-	var result interface{}
 	switch mediaType {
 	case "image":
-		result, err = h.whatsappService.SendImage(sessionName, chatID, fileURL, caption)
+		_, err = h.whatsappService.SendImage(sessionName, chatID, fileURL, caption)
 	case "file":
-		result, err = h.whatsappService.SendFile(sessionName, chatID, fileURL, header.Filename, caption)
+		_, err = h.whatsappService.SendFile(sessionName, chatID, fileURL, header.Filename, caption)
 	case "voice":
 		// Para áudio, usar URL como os outros tipos
-		result, err = h.whatsappService.SendVoice(sessionName, chatID, fileURL)
+		_, err = h.whatsappService.SendVoice(sessionName, chatID, fileURL)
 	case "video":
-		result, err = h.whatsappService.SendVideo(sessionName, chatID, fileURL, caption)
+		_, err = h.whatsappService.SendVideo(sessionName, chatID, fileURL, caption)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Tipo de mídia inválido"})
 		return
@@ -378,12 +393,59 @@ func (h *WhatsAppMediaHandler) UploadAndSendMedia(c *gin.Context) {
 	}
 	
 	c.JSON(http.StatusOK, gin.H{
-		"result":   result,
+		"message":  "File sent successfully",
 		"fileUrl":  fileURL,
 		"filename": header.Filename,
 		"size":     header.Size,
 		"type":     mediaType,
 	})
+}
+
+// SendVideoMessage envia vídeo via WhatsApp
+func (h *WhatsAppMediaHandler) SendVideoMessage(c *gin.Context) {
+	// Validar token JWT
+	userID, err := utils.ValidateJWTFromHeader(c, h.authService)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	sessionName := "user_" + userID
+	chatID := c.Param("chatId")
+
+	// Parse multipart form
+	err = c.Request.ParseMultipartForm(50 << 20) // 50MB max
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse form"})
+		return
+	}
+
+	file, header, err := c.Request.FormFile("video")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No video file provided"})
+		return
+	}
+	defer file.Close()
+
+	// Ler arquivo
+	videoData, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read video file"})
+		return
+	}
+
+	// Obter caption opcional
+	caption := c.Request.FormValue("caption")
+
+	// Enviar vídeo
+	err = h.whatsappService.SendVideoMessage(sessionName, chatID, videoData, header.Filename, caption)
+	if err != nil {
+		log.Printf("[HANDLER] SendVideoMessage error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Video sent successfully"})
 }
 
 // Função auxiliar para validar tipos de arquivo
@@ -426,4 +488,271 @@ func getMediaTypeFromExtension(filename string) string {
 	}
 	
 	return "file"
+}
+
+// ForwardMessage encaminha uma mensagem para outro chat
+func (h *WhatsAppMediaHandler) ForwardMessage(c *gin.Context) {
+	// Validar JWT
+	userID, err := utils.ValidateJWTFromHeader(c, h.authService)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token inválido"})
+		return
+	}
+
+	var req struct {
+		ToChatID  string `json:"toChatId" binding:"required"`
+		MessageID string `json:"messageId" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get session name from user
+	sessionName := fmt.Sprintf("user_%s", userID)
+	log.Printf("[HANDLER] ForwardMessage - userID: %s, sessionName: %s, toChatID: %s, messageID: %s", userID, sessionName, req.ToChatID, req.MessageID)
+
+	// Encaminhar mensagem via WhatsApp Service
+	result, err := h.whatsappService.ForwardMessage(sessionName, req.ToChatID, req.MessageID)
+	if err != nil {
+		log.Printf("[HANDLER] ForwardMessage - WhatsApp service error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao encaminhar mensagem"})
+		return
+	}
+
+	log.Printf("[HANDLER] ForwardMessage - Success!")
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    result,
+	})
+}
+
+// EditMessage edita uma mensagem existente
+func (h *WhatsAppMediaHandler) EditMessage(c *gin.Context) {
+	// Validar JWT
+	userID, err := utils.ValidateJWTFromHeader(c, h.authService)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token inválido"})
+		return
+	}
+
+	chatID := c.Param("chatId")
+	messageID := c.Param("messageId")
+
+	var req struct {
+		Text string `json:"text" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get session name from user
+	sessionName := fmt.Sprintf("user_%s", userID)
+	log.Printf("[HANDLER] EditMessage - userID: %s, sessionName: %s, chatID: %s, messageID: %s", userID, sessionName, chatID, messageID)
+
+	// Editar mensagem via WhatsApp Service
+	result, err := h.whatsappService.EditMessage(sessionName, chatID, messageID, req.Text)
+	if err != nil {
+		log.Printf("[HANDLER] EditMessage - WhatsApp service error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao editar mensagem"})
+		return
+	}
+
+	log.Printf("[HANDLER] EditMessage - Success!")
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    result,
+	})
+}
+
+// DeleteMessage deleta uma mensagem
+func (h *WhatsAppMediaHandler) DeleteMessage(c *gin.Context) {
+	// Validar JWT
+	userID, err := utils.ValidateJWTFromHeader(c, h.authService)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token inválido"})
+		return
+	}
+
+	chatID := c.Param("chatId")
+	messageID := c.Param("messageId")
+
+	// Get session name from user
+	sessionName := fmt.Sprintf("user_%s", userID)
+	log.Printf("[HANDLER] DeleteMessage - userID: %s, sessionName: %s, chatID: %s, messageID: %s", userID, sessionName, chatID, messageID)
+
+	// Deletar mensagem via WhatsApp Service
+	result, err := h.whatsappService.DeleteMessage(sessionName, chatID, messageID)
+	if err != nil {
+		log.Printf("[HANDLER] DeleteMessage - WhatsApp service error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao deletar mensagem"})
+		return
+	}
+
+	log.Printf("[HANDLER] DeleteMessage - Success!")
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    result,
+	})
+}
+
+// StarMessage favorita/desfavorita uma mensagem
+func (h *WhatsAppMediaHandler) StarMessage(c *gin.Context) {
+	// Validar JWT
+	userID, err := utils.ValidateJWTFromHeader(c, h.authService)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token inválido"})
+		return
+	}
+
+	var req struct {
+		MessageID string `json:"messageId" binding:"required"`
+		Star      bool   `json:"star"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get session name from user
+	sessionName := fmt.Sprintf("user_%s", userID)
+	log.Printf("[HANDLER] StarMessage - userID: %s, sessionName: %s, messageID: %s, star: %t", userID, sessionName, req.MessageID, req.Star)
+
+	// Favoritar mensagem via WhatsApp Service
+	result, err := h.whatsappService.StarMessage(sessionName, req.MessageID, req.Star)
+	if err != nil {
+		log.Printf("[HANDLER] StarMessage - WhatsApp service error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao favoritar mensagem"})
+		return
+	}
+
+	log.Printf("[HANDLER] StarMessage - Success!")
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    result,
+	})
+}
+
+// SendContactVcard envia um contato via vCard
+func (h *WhatsAppMediaHandler) SendContactVcard(c *gin.Context) {
+	// Validar JWT
+	userID, err := utils.ValidateJWTFromHeader(c, h.authService)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token inválido"})
+		return
+	}
+
+	var req struct {
+		ChatID    string `json:"chatId" binding:"required"`
+		ContactID string `json:"contactId" binding:"required"`
+		Name      string `json:"name" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get session name from user
+	sessionName := fmt.Sprintf("user_%s", userID)
+	log.Printf("[HANDLER] SendContactVcard - userID: %s, sessionName: %s, chatID: %s", userID, sessionName, req.ChatID)
+
+	// Enviar contato via WhatsApp Service
+	result, err := h.whatsappService.SendContactVcard(sessionName, req.ChatID, req.ContactID, req.Name)
+	if err != nil {
+		log.Printf("[HANDLER] SendContactVcard - WhatsApp service error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao enviar contato"})
+		return
+	}
+
+	log.Printf("[HANDLER] SendContactVcard - Success!")
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    result,
+	})
+}
+
+// SendLocation envia uma localização
+func (h *WhatsAppMediaHandler) SendLocation(c *gin.Context) {
+	// Validar JWT
+	userID, err := utils.ValidateJWTFromHeader(c, h.authService)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token inválido"})
+		return
+	}
+
+	var req struct {
+		ChatID    string  `json:"chatId" binding:"required"`
+		Latitude  float64 `json:"latitude" binding:"required"`
+		Longitude float64 `json:"longitude" binding:"required"`
+		Title     string  `json:"title"`
+		Address   string  `json:"address"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get session name from user
+	sessionName := fmt.Sprintf("user_%s", userID)
+	log.Printf("[HANDLER] SendLocation - userID: %s, sessionName: %s, chatID: %s", userID, sessionName, req.ChatID)
+
+	// Enviar localização via WhatsApp Service
+	result, err := h.whatsappService.SendLocation(sessionName, req.ChatID, req.Latitude, req.Longitude, req.Title, req.Address)
+	if err != nil {
+		log.Printf("[HANDLER] SendLocation - WhatsApp service error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao enviar localização"})
+		return
+	}
+
+	log.Printf("[HANDLER] SendLocation - Success!")
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    result,
+	})
+}
+
+// SendPoll envia uma enquete
+func (h *WhatsAppMediaHandler) SendPoll(c *gin.Context) {
+	// Validar JWT
+	userID, err := utils.ValidateJWTFromHeader(c, h.authService)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token inválido"})
+		return
+	}
+
+	var req struct {
+		ChatID          string   `json:"chatId" binding:"required"`
+		Name            string   `json:"name" binding:"required"`
+		Options         []string `json:"options" binding:"required"`
+		MultipleAnswers bool     `json:"multipleAnswers"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get session name from user
+	sessionName := fmt.Sprintf("user_%s", userID)
+	log.Printf("[HANDLER] SendPoll - userID: %s, sessionName: %s, chatID: %s", userID, sessionName, req.ChatID)
+
+	// Enviar enquete via WhatsApp Service
+	result, err := h.whatsappService.SendPoll(sessionName, req.ChatID, req.Name, req.Options, req.MultipleAnswers)
+	if err != nil {
+		log.Printf("[HANDLER] SendPoll - WhatsApp service error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao enviar enquete"})
+		return
+	}
+
+	log.Printf("[HANDLER] SendPoll - Success!")
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    result,
+	})
 }

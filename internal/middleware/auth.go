@@ -39,6 +39,7 @@ func AuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
 
 		// Adicionar informações do usuário ao contexto
 		c.Set("user_id", claims.UserID)
+		c.Set("userID", claims.UserID)  // Para compatibilidade
 		c.Set("user_email", claims.Email)
 		c.Set("user_role", claims.Role)
 

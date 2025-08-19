@@ -15,9 +15,11 @@ import (
 
 func main() {
 	// Carregar variáveis de ambiente
-	if err := godotenv.Load("../../.env"); err != nil {
-		if err := godotenv.Load(".env"); err != nil {
-			log.Println("Arquivo .env não encontrado, usando variáveis do sistema")
+	if err := godotenv.Load(".env"); err != nil {
+		if err := godotenv.Load("../.env"); err != nil {
+			if err := godotenv.Load("../../.env"); err != nil {
+				log.Println("Arquivo .env não encontrado, usando variáveis do sistema")
+			}
 		}
 	}
 

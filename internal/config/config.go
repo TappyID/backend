@@ -57,6 +57,10 @@ func loadEnvFile(filename string) {
 		if len(parts) == 2 {
 			key := strings.TrimSpace(parts[0])
 			value := strings.TrimSpace(parts[1])
+			// Remover aspas se existirem
+			if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'')) {
+				value = value[1 : len(value)-1]
+			}
 			os.Setenv(key, value)
 		}
 	}
@@ -81,7 +85,7 @@ func Load() *Config {
 		JWTExpiresIn: getEnv("JWT_EXPIRES_IN", "7d"),
 
 		// WhatsApp API
-		WhatsAppAPIURL:   getEnv("WHATSAPP_API_URL", "https://apiwhatsapp.vyzer.com.br"),
+		WhatsAppAPIURL:   getEnv("WAHA_API_URL", "https://apiwhatsapp.vyzer.com.br"),
 		WhatsAppAPIToken: getEnv("WHATSAPP_API_TOKEN", ""),
 		WebhookURL:       getEnv("WEBHOOK_URL", "http://localhost:8080/api/webhooks/whatsapp"),
 
