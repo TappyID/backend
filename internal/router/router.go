@@ -71,38 +71,6 @@ func Setup(container *services.Container) *gin.Engine {
 	// WebSocket route (with JWT auth via query param)
 	r.GET("/ws", handlers.NewWebSocketHandler(container.AuthService, container.Config.JWTSecret))
 
-	// Webhook para receber mensagens da WAHA API
-	r.POST("/webhooks/whatsapp", func(c *gin.Context) {
-		log.Printf("[WEBHOOK] Received WhatsApp webhook")
-
-		var payload map[string]interface{}
-		if err := c.ShouldBindJSON(&payload); err != nil {
-			log.Printf("[WEBHOOK] Error parsing payload: %v", err)
-			c.JSON(400, gin.H{"error": "Invalid payload"})
-			return
-		}
-
-		log.Printf("[WEBHOOK] Payload: %+v", payload)
-
-		// Verificar se é uma mensagem nova
-		if event, ok := payload["event"].(string); ok && event == "message" {
-			if data, ok := payload["data"].(map[string]interface{}); ok {
-				// Extrair session da mensagem para identificar o usuário
-				if session, ok := payload["session"].(string); ok {
-					// Extrair userID do session name (formato: user_UUID)
-					if len(session) > 5 && session[:5] == "user_" {
-						userID := session[5:]
-						log.Printf("[WEBHOOK] Broadcasting message to user: %s", userID)
-
-						// Enviar via WebSocket
-						handlers.BroadcastNewMessage(userID, data)
-					}
-				}
-			}
-		}
-
-		c.JSON(200, gin.H{"status": "ok"})
-	})
 
 	// Webhook específico para respostas rápidas
 	r.POST("/webhooks/resposta-rapida", respostaRapidaHandler.ProcessarMensagemWebhook)
