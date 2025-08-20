@@ -1,8 +1,12 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -174,34 +178,141 @@ func (h *WhatsAppHandler) processMediaMessage(data map[string]interface{}) {
 	
 	log.Printf("Processando mídia: chatID=%s, messageID=%s, type=%s", chatID, messageID, msgType)
 
-	// Se há um fileId ou mediaUrl, fazer download da mídia
-	var fileID string
-	if media, ok := data["media"].(map[string]interface{}); ok {
-		if id, ok := media["id"].(string); ok {
-			fileID = id
+	// Verificar se há mídia com hasMedia e media.url
+	hasMedia, _ := data["hasMedia"].(bool)
+	var mediaURL string
+	var filename string
+	
+	if hasMedia {
+		if media, ok := data["media"].(map[string]interface{}); ok {
+			if url, ok := media["url"].(string); ok {
+				mediaURL = url
+			}
+			if fname, ok := media["filename"].(string); ok {
+				filename = fname
+			}
 		}
 	}
 
-	if fileID != "" {
-		// Download da mídia via WAHA API
-		mediaData, filename, err := h.whatsappService.DownloadMedia("default", fileID)
+	if mediaURL != "" {
+		log.Printf("Baixando mídia de: %s", mediaURL)
+
+		mediaData, err := h.downloadMediaFromURL(mediaURL)
 		if err != nil {
-			log.Printf("Erro ao fazer download da mídia %s: %v", fileID, err)
+			log.Printf("Erro ao fazer download da mídia %s: %v", mediaURL, err)
 			return
 		}
 
-		// Salvar mídia no blob storage (uploads/)
-		savedPath, err := h.saveMediaToStorage(mediaData, filename, msgType)
+		// Upload para Vercel Blob Storage
+		blobURL, err := h.uploadToBlob(mediaData, filename, msgType)
 		if err != nil {
-			log.Printf("Erro ao salvar mídia: %v", err)
-			return
+			log.Printf("Erro ao fazer upload para blob: %v", err)
+			// Fallback para salvamento local
+			savedPath, err := h.saveMediaToStorage(mediaData, filename, msgType)
+			if err != nil {
+				log.Printf("Erro ao salvar mídia localmente: %v", err)
+				return
+			}
+			log.Printf("Mídia salva localmente em: %s", savedPath)
+			h.notifyMediaReceived(chatID, messageID, savedPath, msgType)
+		} else {
+			log.Printf("Mídia salva no blob: %s", blobURL)
+			h.notifyMediaReceived(chatID, messageID, blobURL, msgType)
 		}
-
-		log.Printf("Mídia salva em: %s", savedPath)
-		
-		// Aqui você pode salvar informações da mídia no banco de dados
-		// ou enviar via WebSocket para o frontend
 	}
+}
+
+func (h *WhatsAppHandler) downloadMediaFromURL(mediaURL string) ([]byte, error) {
+	// Fazer requisição HTTP para baixar a mídia
+	resp, err := http.Get(mediaURL)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao fazer requisição: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status code inválido: %d", resp.StatusCode)
+	}
+
+	// Ler dados da resposta
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao ler dados: %v", err)
+	}
+
+	return data, nil
+}
+
+func (h *WhatsAppHandler) uploadToBlob(data []byte, filename, msgType string) (string, error) {
+	// Criar buffer para multipart form
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	
+	// Adicionar arquivo
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		return "", fmt.Errorf("erro ao criar form file: %v", err)
+	}
+	
+	_, err = part.Write(data)
+	if err != nil {
+		return "", fmt.Errorf("erro ao escrever dados: %v", err)
+	}
+	
+	// Adicionar tipo de mídia
+	err = writer.WriteField("msgType", msgType)
+	if err != nil {
+		return "", fmt.Errorf("erro ao adicionar msgType: %v", err)
+	}
+	
+	err = writer.Close()
+	if err != nil {
+		return "", fmt.Errorf("erro ao fechar writer: %v", err)
+	}
+	
+	// Fazer requisição para API do Next.js
+	req, err := http.NewRequest("POST", "http://localhost:3000/api/upload/blob-from-backend", &buf)
+	if err != nil {
+		return "", fmt.Errorf("erro ao criar requisição: %v", err)
+	}
+	
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("erro ao fazer requisição: %v", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("erro na API: status %d, body: %s", resp.StatusCode, string(body))
+	}
+	
+	// Ler resposta
+	var result struct {
+		Success bool   `json:"success"`
+		URL     string `json:"url"`
+		Error   string `json:"error"`
+	}
+	
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		return "", fmt.Errorf("erro ao decodificar resposta: %v", err)
+	}
+	
+	if !result.Success {
+		return "", fmt.Errorf("erro na API: %s", result.Error)
+	}
+	
+	return result.URL, nil
+}
+
+func (h *WhatsAppHandler) notifyMediaReceived(chatID, messageID, mediaURL, msgType string) {
+	// Por enquanto, apenas log da mídia recebida
+	// TODO: Implementar envio via WebSocket para notificar frontend
+	log.Printf("Mídia recebida - Chat: %s, MessageID: %s, URL: %s, Tipo: %s", chatID, messageID, mediaURL, msgType)
 }
 
 func (h *WhatsAppHandler) saveMediaToStorage(data []byte, filename, msgType string) (string, error) {

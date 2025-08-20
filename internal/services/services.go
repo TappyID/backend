@@ -12,12 +12,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"tappyone/internal/config"
-	"tappyone/internal/models"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+	"tappyone/internal/config"
+	"tappyone/internal/models"
 )
 
 // UserService gerencia operações de usuários
@@ -267,11 +267,10 @@ func (s *WhatsAppService) SendVoiceMessage(sessionName, chatID string, audioFile
 		"session": sessionName,
 		"chatId":  chatID,
 		"file": map[string]interface{}{
-			"mimetype": "audio/ogg; codecs=opus",
+			"mimetype": "audio/ogg",
 			"data":     base64Audio,
 			"filename": filename,
 		},
-		"convert": true, // Conversão automática para formato WhatsApp
 	}
 
 	// Endpoint para enviar voz: /sendVoice
@@ -610,13 +609,46 @@ func (s *WhatsAppService) GetChatMessages(sessionName, chatID string, limit int,
 		// Adicionar tipo processado
 		msgMap["processedType"] = msgType
 
-		// Se tem mídia, verificar se tem URL de download
+		// Se tem mídia, verificar se já tem URL do blob ou gerar nova
 		if hasMedia, exists := msgMap["hasMedia"].(bool); exists && hasMedia {
-			if mediaKey, exists := msgMap["mediaKey"].(string); exists && mediaKey != "" {
-				// Construir URL para download da mídia
-				backendURL := "http://localhost:8081" // URL do nosso backend
-				mediaURL := fmt.Sprintf("%s/api/whatsapp/media/%s", backendURL, mediaKey)
-				msgMap["mediaUrl"] = mediaURL
+			// Verificar se já existe uma URL de blob storage
+			if existingURL, exists := msgMap["mediaUrl"].(string); exists && strings.Contains(existingURL, "vercel-storage.com") {
+				// Já tem URL do blob, manter
+				log.Printf("[WHATSAPP] GetChatMessages - Using existing blob URL: %s", existingURL)
+			} else {
+				// Verificar se tem URL da mídia do WAHA para download
+				var mediaURL string
+				if media, exists := msgMap["media"].(map[string]interface{}); exists {
+					if url, ok := media["url"].(string); ok {
+						mediaURL = url
+					}
+				}
+				
+				if mediaURL != "" {
+					// Tem URL do WAHA, usar diretamente
+					msgMap["mediaUrl"] = mediaURL
+					log.Printf("[WHATSAPP] GetChatMessages - Using WAHA media URL: %s", mediaURL)
+				} else {
+					// Fallback para sistema antigo
+					var mediaID string
+					if id, exists := msgMap["id"].(map[string]interface{}); exists {
+						if serialized, ok := id["_serialized"].(string); ok {
+							mediaID = serialized
+						}
+					}
+					if mediaID == "" {
+						if id, exists := msgMap["id"].(string); exists {
+							mediaID = id
+						}
+					}
+					
+					if mediaID != "" {
+						backendURL := "http://localhost:8081"
+						fallbackURL := fmt.Sprintf("%s/api/whatsapp/media/%s", backendURL, mediaID)
+						msgMap["mediaUrl"] = fallbackURL
+						log.Printf("[WHATSAPP] GetChatMessages - Using fallback URL: %s", fallbackURL)
+					}
+				}
 			}
 		}
 

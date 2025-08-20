@@ -15,7 +15,7 @@ type Config struct {
 	RedisURL string
 
 	// JWT
-	JWTSecret   string
+	JWTSecret    string
 	JWTExpiresIn string
 
 	// WhatsApp API
@@ -70,7 +70,7 @@ func Load() *Config {
 	// Tentar carregar arquivo de configuração
 	loadEnvFile("config.env")
 	loadEnvFile(".env")
-	
+
 	smtpPort, _ := strconv.Atoi(getEnv("SMTP_PORT", "587"))
 
 	return &Config{
@@ -81,13 +81,13 @@ func Load() *Config {
 		RedisURL: getEnv("REDIS_URL", "redis://localhost:6379"),
 
 		// JWT
-		JWTSecret:   getEnv("JWT_SECRET", "sua-chave-secreta-jwt-aqui"),
+		JWTSecret:    getEnv("JWT_SECRET", "sua-chave-secreta-jwt-aqui"),
 		JWTExpiresIn: getEnv("JWT_EXPIRES_IN", "7d"),
 
 		// WhatsApp API
 		WhatsAppAPIURL:   getEnv("WAHA_API_URL", "https://apiwhatsapp.vyzer.com.br"),
 		WhatsAppAPIToken: getEnv("WHATSAPP_API_TOKEN", ""),
-		WebhookURL:       getEnv("WEBHOOK_URL", "http://localhost:8080/api/webhooks/whatsapp"),
+		WebhookURL:       getEnv("WEBHOOK_URL", "http://localhost:8081/api/webhooks/whatsapp"),
 
 		// Email SMTP
 		SMTPHost: getEnv("SMTP_HOST", "smtp.hostinger.com"),

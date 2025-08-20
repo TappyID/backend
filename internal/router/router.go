@@ -649,6 +649,41 @@ func Setup(container *services.Container) *gin.Engine {
 		})
 	}
 
+	// Send endpoints
+	send := protected.Group("/send")
+	{
+		// Link preview endpoint
+		send.POST("/link-custom-preview", func(c *gin.Context) {
+			userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
+			if err != nil {
+				c.JSON(401, gin.H{"error": "Invalid token"})
+				return
+			}
+
+			var req struct {
+				URL string `json:"url" binding:"required"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(400, gin.H{"error": "Invalid request"})
+				return
+			}
+
+			// Implementação básica de link preview
+			// Por enquanto, retorna dados básicos extraídos da URL
+			result := gin.H{
+				"title":       "Link Preview",
+				"description": "Preview do link: " + req.URL,
+				"image":       "",
+				"favicon":     "",
+				"url":         req.URL,
+				"siteName":    "",
+			}
+
+			log.Printf("[LINK_PREVIEW] User %s requested preview for: %s", userID, req.URL)
+			c.JSON(200, result)
+		})
+	}
+
 	// Webhooks
 	webhooks := r.Group("/webhooks")
 	{
