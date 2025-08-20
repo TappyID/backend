@@ -49,12 +49,14 @@ func main() {
 	}
 
 	// Configurar rotas
+	log.Println("Configurando rotas...")
 	r := router.Setup(serviceContainer)
+	log.Println("Rotas configuradas com sucesso")
 
 	// Iniciar servidor
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = "8081"
 	}
 
 	// Debug JWT Secret
@@ -65,6 +67,10 @@ func main() {
 	}
 	
 	log.Printf("Servidor iniciando na porta %s", port)
+	log.Printf("Environment: %s", cfg.Environment)
+	log.Printf("Database URL configurado: %t", cfg.DatabaseURL != "")
+	log.Printf("Redis URL configurado: %t", cfg.RedisURL != "")
+	
 	if err := r.Run(":" + port); err != nil {
 		log.Fatal("Falha ao iniciar servidor:", err)
 	}

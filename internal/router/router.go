@@ -22,7 +22,13 @@ func Setup(container *services.Container) *gin.Engine {
 
 	// Configurar CORS
 	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"http://localhost:3000", "http://localhost:3001"}
+	config.AllowOrigins = []string{
+		"http://localhost:3000", 
+		"http://localhost:3001",
+		"https://server.tappy.id",
+		"https://tappy.id",
+		"http://159.65.34.199",
+	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
 	config.AllowCredentials = true
@@ -51,13 +57,22 @@ func Setup(container *services.Container) *gin.Engine {
 		public.GET("/health", func(c *gin.Context) {
 			c.JSON(200, gin.H{"status": "ok", "message": "TappyOne CRM API"})
 		})
+		public.GET("/version", func(c *gin.Context) {
+			c.JSON(200, gin.H{"version": "1.0.0", "service": "tappyone-backend"})
+		})
 	}
+
+	// Rota de teste simples (sem grupo)
+	r.GET("/test", func(c *gin.Context) {
+		log.Printf("[TEST] Route /test accessed")
+		c.JSON(200, gin.H{"message": "Backend is working!", "timestamp": "2025-01-20"})
+	})
 
 	// WebSocket route (with JWT auth via query param)
 	r.GET("/ws", handlers.NewWebSocketHandler(container.AuthService, container.Config.JWTSecret))
 
 	// Webhook para receber mensagens da WAHA API
-	r.POST("/webhook/whatsapp", func(c *gin.Context) {
+	r.POST("/webhooks/whatsapp", func(c *gin.Context) {
 		log.Printf("[WEBHOOK] Received WhatsApp webhook")
 
 		var payload map[string]interface{}
@@ -90,7 +105,7 @@ func Setup(container *services.Container) *gin.Engine {
 	})
 
 	// Webhook específico para respostas rápidas
-	r.POST("/webhook/resposta-rapida", respostaRapidaHandler.ProcessarMensagemWebhook)
+	r.POST("/webhooks/resposta-rapida", respostaRapidaHandler.ProcessarMensagemWebhook)
 
 	// Rotas protegidas
 	protected := r.Group("/api")
