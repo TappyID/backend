@@ -27,6 +27,7 @@ func Setup(container *services.Container) *gin.Engine {
 		"http://localhost:3001",
 		"https://server.tappy.id",
 		"https://tappy.id",
+		"https://crm.tappy.id",
 		"http://159.65.34.199",
 	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
