@@ -43,6 +43,43 @@ func (h *ConnectionHandler) GetUserConnections(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"connections": connections})
 }
 
+// GetWhatsAppConnection retrieves WhatsApp connection for the authenticated user
+func (h *ConnectionHandler) GetWhatsAppConnection(c *gin.Context) {
+	userIDStr, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	connection, err := h.connectionService.GetUserConnection(userID, models.PlatformWhatsApp)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get connection"})
+		return
+	}
+
+	if connection == nil {
+		// Criar conexão inicial se não existir
+		createReq := &models.CreateUserConnectionRequest{
+			Platform: models.PlatformWhatsApp,
+			Status:   models.ConnectionStatusDisconnected,
+		}
+		
+		connection, err = h.connectionService.CreateOrUpdateConnection(userID, createReq)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create connection"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, connection)
+}
+
 // GetUserConnection retrieves a specific connection for the authenticated user
 func (h *ConnectionHandler) GetUserConnection(c *gin.Context) {
 	userIDStr, exists := c.Get("userID")

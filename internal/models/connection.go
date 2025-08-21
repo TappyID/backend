@@ -58,17 +58,17 @@ func (s *SessionData) Scan(value interface{}) error {
 
 // UserConnection represents a user's connection to a social platform
 type UserConnection struct {
-	ID             uuid.UUID        `json:"id" db:"id"`
-	UserID         uuid.UUID        `json:"user_id" db:"user_id"`
-	Platform       Platform         `json:"platform" db:"platform"`
-	Status         ConnectionStatus `json:"status" db:"status"`
-	SessionName    *string          `json:"session_name,omitempty" db:"session_name"`
-	SessionData    SessionData      `json:"session_data,omitempty" db:"session_data"`
-	ConnectedAt    *time.Time       `json:"connected_at,omitempty" db:"connected_at"`
-	DisconnectedAt *time.Time       `json:"disconnected_at,omitempty" db:"disconnected_at"`
-	LastSyncAt     time.Time        `json:"last_sync_at" db:"last_sync_at"`
-	CreatedAt      time.Time        `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time        `json:"updated_at" db:"updated_at"`
+	ID             uuid.UUID        `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	UserID         uuid.UUID        `json:"user_id" gorm:"type:uuid;not null"`
+	Platform       Platform         `json:"platform" gorm:"type:varchar(50);not null"`
+	Status         ConnectionStatus `json:"status" gorm:"type:varchar(50);not null"`
+	SessionName    *string          `json:"session_name,omitempty" gorm:"type:varchar(255)"`
+	SessionData    SessionData      `json:"session_data,omitempty" gorm:"type:jsonb"`
+	ConnectedAt    *time.Time       `json:"connected_at,omitempty"`
+	DisconnectedAt *time.Time       `json:"disconnected_at,omitempty"`
+	LastSyncAt     time.Time        `json:"last_sync_at" gorm:"default:CURRENT_TIMESTAMP"`
+	CreatedAt      time.Time        `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt      time.Time        `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
 // CreateUserConnectionRequest represents the request to create/update a connection

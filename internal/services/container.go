@@ -15,14 +15,14 @@ type Container struct {
 	Config *config.Config
 
 	// Serviços
-	AuthService         *AuthService
-	UserService         *UserService
-	WhatsAppService     *WhatsAppService
-	KanbanService       *KanbanService
-	MessageService      *MessageService
-	AIService           *AIService
-	EmailService        *EmailService
-	ConnectionService   *ConnectionService
+	AuthService           *AuthService
+	UserService           *UserService
+	WhatsAppService       *WhatsAppService
+	KanbanService         *KanbanService
+	MessageService        *MessageService
+	AIService             *AIService
+	EmailService          *EmailService
+	ConnectionService     *ConnectionService
 	RespostaRapidaService *RespostaRapidaService
 }
 
@@ -42,11 +42,11 @@ func NewContainer(db *gorm.DB, redis *redis.Client, cfg *config.Config) *Contain
 	container.MessageService = NewMessageService(db, redis)
 	container.AIService = NewAIService(cfg)
 	container.EmailService = NewEmailService(cfg)
-	
+
 	// Inicializar repositórios e serviços de conexão
 	connectionRepo := repositories.NewConnectionRepository(db)
-	container.ConnectionService = NewConnectionService(connectionRepo, "https://apiwhatsapp.vyzer.com.br/api", "atendia-waha-2024-secretkey")
-	
+	container.ConnectionService = NewConnectionService(connectionRepo, "https://server.tappy.id/api", "tappyone-waha-2024-secretkey")
+
 	// Inicializar serviço de respostas rápidas
 	respostaRapidaRepo := repositories.NewRespostaRapidaRepository(db)
 	container.RespostaRapidaService = NewRespostaRapidaService(respostaRapidaRepo, container.WhatsAppService)

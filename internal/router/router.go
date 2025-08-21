@@ -128,7 +128,7 @@ func Setup(container *services.Container) *gin.Engine {
 		connections := protected.Group("/connections")
 		{
 			connections.GET("/", connectionHandler.GetUserConnections)
-			connections.GET("/whatsapp", connectionHandler.GetUserConnection)
+			connections.GET("/whatsapp", connectionHandler.GetWhatsAppConnection)
 			connections.GET("/:platform", connectionHandler.GetUserConnection)
 			connections.POST("/", connectionHandler.CreateOrUpdateConnection)
 			connections.PUT("/:platform", connectionHandler.UpdateConnection)
@@ -311,6 +311,64 @@ func Setup(container *services.Container) *gin.Engine {
 				chatID := c.Param("chatId")
 
 				result, err := container.WhatsAppService.MarkAsRead(sessionName, chatID)
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, result)
+			})
+
+			// Anti-blocking endpoints conforme WAHA best practices
+			// 1. Marcar como visualizada (sendSeen)
+			whatsappAPI.POST("/chats/:chatId/seen", func(c *gin.Context) {
+				userID, exists := c.Get("userID")
+				if !exists {
+					c.JSON(401, gin.H{"error": "User not authenticated"})
+					return
+				}
+
+				sessionName := fmt.Sprintf("user_%s", userID)
+				chatID := c.Param("chatId")
+
+				result, err := container.WhatsAppService.SendSeenAntiBlock(sessionName, chatID)
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, result)
+			})
+
+			// 2. Começar a digitar (startTyping)
+			whatsappAPI.POST("/chats/:chatId/typing/start", func(c *gin.Context) {
+				userID, exists := c.Get("userID")
+				if !exists {
+					c.JSON(401, gin.H{"error": "User not authenticated"})
+					return
+				}
+
+				sessionName := fmt.Sprintf("user_%s", userID)
+				chatID := c.Param("chatId")
+
+				result, err := container.WhatsAppService.StartTyping(sessionName, chatID)
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, result)
+			})
+
+			// 3. Parar de digitar (stopTyping)
+			whatsappAPI.POST("/chats/:chatId/typing/stop", func(c *gin.Context) {
+				userID, exists := c.Get("userID")
+				if !exists {
+					c.JSON(401, gin.H{"error": "User not authenticated"})
+					return
+				}
+
+				sessionName := fmt.Sprintf("user_%s", userID)
+				chatID := c.Param("chatId")
+
+				result, err := container.WhatsAppService.StopTyping(sessionName, chatID)
 				if err != nil {
 					c.JSON(500, gin.H{"error": err.Error()})
 					return
