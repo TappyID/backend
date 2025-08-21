@@ -20,20 +20,19 @@ func Setup(container *services.Container) *gin.Engine {
 	// Inicializar WebSocket Hub
 	handlers.InitWebSocketHub()
 
-	// Configurar CORS
-	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{
-		"http://localhost:3000", 
-		"http://localhost:3001",
-		"https://server.tappy.id",
-		"https://tappy.id",
-		"https://crm.tappy.id",
-		"http://159.65.34.199",
+	// CORS será tratado pelo nginx em produção
+	// Manter CORS apenas para desenvolvimento local
+	if gin.Mode() == gin.DebugMode {
+		config := cors.DefaultConfig()
+		config.AllowOrigins = []string{
+			"http://localhost:3000", 
+			"http://localhost:3001",
+		}
+		config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+		config.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
+		config.AllowCredentials = true
+		r.Use(cors.New(config))
 	}
-	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
-	config.AllowCredentials = true
-	r.Use(cors.New(config))
 
 	// Middleware de logging
 	r.Use(gin.Logger())
