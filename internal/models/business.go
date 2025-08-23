@@ -34,6 +34,7 @@ type Agendamento struct {
 	Descricao   *string           `json:"descricao"`
 	InicioEm    time.Time         `gorm:"not null" json:"inicioEm"`
 	FimEm       time.Time         `gorm:"not null" json:"fimEm"`
+	LinkMeeting *string           `json:"linkMeeting"`
 	Status      StatusAgendamento `gorm:"default:AGENDADO" json:"status"`
 	UsuarioID   string            `gorm:"not null" json:"usuarioId"`
 	ContatoID   string            `gorm:"not null" json:"contatoId"`
@@ -45,6 +46,78 @@ type Agendamento struct {
 
 func (Agendamento) TableName() string {
 	return "agendamentos"
+}
+
+// Enum para tipos de orçamento
+type TipoOrcamento string
+const (
+	TipoOrcamentoVenda      TipoOrcamento = "venda"
+	TipoOrcamentoAssinatura TipoOrcamento = "assinatura"
+	TipoOrcamentoOrcamento  TipoOrcamento = "orcamento"
+	TipoOrcamentoCobranca   TipoOrcamento = "cobranca"
+)
+
+// Enum para status de orçamento
+type StatusOrcamento string
+const (
+	StatusOrcamentoPendente  StatusOrcamento = "PENDENTE"
+	StatusOrcamentoAprovado  StatusOrcamento = "APROVADO"
+	StatusOrcamentoRejeitado StatusOrcamento = "REJEITADO"
+	StatusOrcamentoCancelado StatusOrcamento = "CANCELADO"
+)
+
+type Orcamento struct {
+	BaseModel
+	Titulo      string          `gorm:"not null" json:"titulo"`
+	Data        time.Time       `gorm:"not null" json:"data"`
+	Tipo        TipoOrcamento   `gorm:"not null" json:"tipo"`
+	Observacao  *string         `json:"observacao"`
+	ValorTotal  float64         `gorm:"not null;default:0" json:"valorTotal"`
+	Status      StatusOrcamento `gorm:"default:PENDENTE" json:"status"`
+	UsuarioID   string          `gorm:"not null" json:"usuarioId"`
+	ContatoID   string          `gorm:"not null" json:"contatoId"`
+
+	// Relacionamentos
+	Usuario Usuario          `gorm:"foreignKey:UsuarioID" json:"usuario,omitempty"`
+	Contato Contato          `gorm:"foreignKey:ContatoID" json:"contato,omitempty"`
+	Itens   []OrcamentoItem  `gorm:"foreignKey:OrcamentoID" json:"itens,omitempty"`
+}
+
+func (Orcamento) TableName() string {
+	return "orcamentos"
+}
+
+type OrcamentoItem struct {
+	BaseModel
+	Nome         string  `gorm:"not null" json:"nome"`
+	Valor        float64 `gorm:"not null" json:"valor"`
+	Quantidade   int     `gorm:"not null;default:1" json:"quantidade"`
+	Subtotal     float64 `gorm:"not null;default:0" json:"subtotal"`
+	OrcamentoID  string  `gorm:"not null" json:"orcamentoId"`
+
+	// Relacionamentos
+	Orcamento Orcamento `gorm:"foreignKey:OrcamentoID" json:"orcamento,omitempty"`
+}
+
+func (OrcamentoItem) TableName() string {
+	return "orcamento_itens"
+}
+
+type Anotacao struct {
+	BaseModel
+	Titulo      string  `gorm:"not null" json:"titulo"`
+	Conteudo    string  `gorm:"not null" json:"conteudo"`
+	Importante  bool    `gorm:"default:false" json:"importante"`
+	UsuarioID   string  `gorm:"not null" json:"usuarioId"`
+	ContatoID   string  `gorm:"not null" json:"contatoId"`
+
+	// Relacionamentos
+	Usuario Usuario `gorm:"foreignKey:UsuarioID" json:"usuario,omitempty"`
+	Contato Contato `gorm:"foreignKey:ContatoID" json:"contato,omitempty"`
+}
+
+func (Anotacao) TableName() string {
+	return "anotacoes"
 }
 
 type MensagemInterna struct {
@@ -146,8 +219,14 @@ func (Plano) TableName() string {
 
 type Assinatura struct {
 	BaseModel
+	Nome                 string       `gorm:"not null" json:"nome"`
 	UsuarioID            string       `gorm:"not null" json:"usuarioId"`
+	ContatoID            string       `gorm:"not null" json:"contatoId"`
 	PlanoID              string       `gorm:"not null" json:"planoId"`
+	FormaPagamento       TipoCobranca `gorm:"not null" json:"formaPagamento"`
+	LinkPagamento        *string      `json:"linkPagamento"`
+	Valor                float64      `gorm:"not null" json:"valor"`
+	Renovacao            string       `gorm:"not null" json:"renovacao"` // mensal, trimestral, semestral, anual, limitado
 	Status               StatusPlano  `gorm:"default:ATIVO" json:"status"`
 	DataInicio           time.Time    `gorm:"not null" json:"dataInicio"`
 	DataFim              *time.Time   `json:"dataFim"`
@@ -156,6 +235,7 @@ type Assinatura struct {
 
 	// Relacionamentos
 	Usuario   Usuario    `gorm:"foreignKey:UsuarioID" json:"usuario,omitempty"`
+	Contato   Contato    `gorm:"foreignKey:ContatoID" json:"contato,omitempty"`
 	Plano     Plano      `gorm:"foreignKey:PlanoID" json:"plano,omitempty"`
 	Cobrancas []Cobranca `gorm:"foreignKey:AssinaturaID" json:"cobrancas,omitempty"`
 }

@@ -9,8 +9,8 @@ import (
 
 // Base model com campos comuns
 type BaseModel struct {
-	ID        string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
-	CriadoEm  time.Time `gorm:"autoCreateTime" json:"criadoEm"`
+	ID           string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	CriadoEm     time.Time `gorm:"autoCreateTime" json:"criadoEm"`
 	AtualizadoEm time.Time `gorm:"autoUpdateTime" json:"atualizadoEm"`
 }
 
@@ -124,6 +124,8 @@ type Usuario struct {
 	Quadros             []Quadro          `gorm:"foreignKey:UsuarioID" json:"quadros,omitempty"`
 	RespostasRapidas    []RespostaRapida  `gorm:"foreignKey:UsuarioID" json:"respostasRapidas,omitempty"`
 	Agendamentos        []Agendamento     `gorm:"foreignKey:UsuarioID" json:"agendamentos,omitempty"`
+	Orcamentos          []Orcamento       `gorm:"foreignKey:UsuarioID" json:"orcamentos,omitempty"`
+	Anotacoes           []Anotacao        `gorm:"foreignKey:UsuarioID" json:"anotacoes,omitempty"`
 	MensagensEnviadas   []MensagemInterna `gorm:"foreignKey:RemetenteID" json:"mensagensEnviadas,omitempty"`
 	MensagensRecebidas  []MensagemInterna `gorm:"foreignKey:DestinatarioID" json:"mensagensRecebidas,omitempty"`
 	AvaliacoesNps       []AvaliacaoNps    `gorm:"foreignKey:UsuarioID" json:"avaliacoesNps,omitempty"`
@@ -163,6 +165,26 @@ type Contato struct {
 	Sobre            *string `json:"sobre"`
 	Bloqueado        bool    `gorm:"default:false" json:"bloqueado"`
 	SessaoWhatsappID string  `gorm:"not null" json:"sessaoWhatsappId"`
+	
+	// Campos adicionais do contato
+	Email    *string `json:"email"`
+	Empresa  *string `json:"empresa"`
+	CPF      *string `json:"cpf"`
+	CNPJ     *string `json:"cnpj"`
+	
+	// Campos de endereço
+	CEP     *string `json:"cep"`
+	Rua     *string `json:"rua"`
+	Numero  *string `json:"numero"`
+	Bairro  *string `json:"bairro"`
+	Cidade  *string `json:"cidade"`
+	Estado  *string `json:"estado"`
+	Pais    *string `json:"pais"`
+
+	// Campos Kanban
+	UltimaInteracao *time.Time `json:"ultimaInteracao,omitempty"`
+	StatusKanban    *string    `json:"statusKanban,omitempty"`
+	Favorito        bool       `gorm:"default:false" json:"favorito"`
 
 	// Relacionamentos
 	SessaoWhatsapp SessaoWhatsApp  `gorm:"foreignKey:SessaoWhatsappID" json:"sessaoWhatsapp,omitempty"`
@@ -170,6 +192,9 @@ type Contato struct {
 	Tags           []ContatoTag    `gorm:"foreignKey:ContatoID" json:"tags,omitempty"`
 	Atendimentos   []Atendimento   `gorm:"foreignKey:ContatoID" json:"atendimentos,omitempty"`
 	Agendamentos   []Agendamento   `gorm:"foreignKey:ContatoID" json:"agendamentos,omitempty"`
+	Orcamentos     []Orcamento     `gorm:"foreignKey:ContatoID" json:"orcamentos,omitempty"`
+	Assinaturas    []Assinatura    `gorm:"foreignKey:ContatoID" json:"assinaturas,omitempty"`
+	Anotacoes      []Anotacao      `gorm:"foreignKey:ContatoID" json:"anotacoes,omitempty"`
 	AvaliacoesNps  []AvaliacaoNps  `gorm:"foreignKey:ContatoID" json:"avaliacoesNps,omitempty"`
 }
 

@@ -72,6 +72,10 @@ func NewWhatsAppService(db *gorm.DB, config *config.Config) *WhatsAppService {
 	}
 }
 
+func (s *WhatsAppService) GetDB() *gorm.DB {
+	return s.db
+}
+
 func (s *WhatsAppService) CreateSession(session *models.SessaoWhatsApp) error {
 	return s.db.Create(session).Error
 }

@@ -213,7 +213,14 @@ func (h *WhatsAppMediaHandler) SendFile(c *gin.Context) {
 
 // SendVoice envia áudio
 func (h *WhatsAppMediaHandler) SendVoice(c *gin.Context) {
-	sessionName := "user_" + c.GetString("user_id")
+	// Validar token JWT
+	userID, err := utils.ValidateJWTFromHeader(c, h.authService)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+	
+	sessionName := "user_" + userID
 	chatID := c.Param("chatId")
 	
 	var req struct {

@@ -11,9 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"tappyone/internal/models"
 	"tappyone/internal/services"
+
+	"github.com/gin-gonic/gin"
 )
 
 // AuthHandler gerencia autenticação
@@ -119,8 +120,21 @@ func (h *WhatsAppHandler) CreateSession(c *gin.Context) {
 }
 
 func (h *WhatsAppHandler) ListSessions(c *gin.Context) {
-	// TODO: Implementar listagem de sessões
-	c.JSON(http.StatusOK, gin.H{"message": "Lista de sessões WhatsApp"})
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	var sessoes []models.SessaoWhatsApp
+
+	err := h.whatsappService.GetDB().Where("usuario_id = ? AND ativo = ?", userID, true).Find(&sessoes).Error
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao buscar sessões"})
+		return
+	}
+
+	c.JSON(http.StatusOK, sessoes)
 }
 
 func (h *WhatsAppHandler) GetSession(c *gin.Context) {
@@ -173,14 +187,14 @@ func (h *WhatsAppHandler) processMediaMessage(data map[string]interface{}) {
 	chatID, _ := data["from"].(string)
 	messageID, _ := data["id"].(string)
 	msgType, _ := data["type"].(string)
-	
+
 	log.Printf("Processando mídia: chatID=%s, messageID=%s, type=%s", chatID, messageID, msgType)
 
 	// Verificar se há mídia com hasMedia e media.url
 	hasMedia, _ := data["hasMedia"].(bool)
 	var mediaURL string
 	var filename string
-	
+
 	if hasMedia {
 		if media, ok := data["media"].(map[string]interface{}); ok {
 			if url, ok := media["url"].(string); ok {
@@ -207,7 +221,7 @@ func (h *WhatsAppHandler) processMediaMessage(data map[string]interface{}) {
 			log.Printf("Erro ao salvar mídia no droplet: %v", err)
 			return
 		}
-		
+
 		log.Printf("Mídia salva no droplet: %s", savedURL)
 		log.Printf("Mídia recebida - Chat: %s, MessageID: %s, URL: %s, Tipo: %s", chatID, messageID, savedURL, msgType)
 	}
@@ -240,11 +254,11 @@ func (h *WhatsAppHandler) saveMediaToDroplet(data []byte, filename, msgType stri
 	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
 		return "", fmt.Errorf("erro ao criar diretório uploads: %v", err)
 	}
-	
+
 	// Gerar nome único para o arquivo
 	timestamp := time.Now().Unix()
 	randomId := fmt.Sprintf("%d", rand.Int63())
-	
+
 	// Determinar extensão baseada no tipo
 	var ext string
 	switch msgType {
@@ -279,20 +293,20 @@ func (h *WhatsAppHandler) saveMediaToDroplet(data []byte, filename, msgType stri
 	default:
 		ext = ".bin"
 	}
-	
+
 	// Nome final do arquivo
 	finalFilename := fmt.Sprintf("%s_%d_%s%s", msgType, timestamp, randomId, ext)
 	filePath := filepath.Join(uploadsDir, finalFilename)
-	
+
 	// Salvar arquivo
 	if err := os.WriteFile(filePath, data, 0644); err != nil {
 		return "", fmt.Errorf("erro ao salvar arquivo: %v", err)
 	}
-	
+
 	// Retornar URL pública
 	publicURL := fmt.Sprintf("https://server.tappy.id/api/files/%s", finalFilename)
 	log.Printf("Mídia salva no droplet: %s", publicURL)
-	
+
 	return publicURL, nil
 }
 
@@ -349,9 +363,9 @@ func (h *WhatsAppHandler) SendImageMessage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
+		"success":  true,
 		"mediaUrl": mediaURL,
-		"message": "Imagem enviada com sucesso",
+		"message":  "Imagem enviada com sucesso",
 	})
 }
 
@@ -405,9 +419,9 @@ func (h *WhatsAppHandler) SendVoiceMessage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
+		"success":  true,
 		"mediaUrl": mediaURL,
-		"message": "Áudio enviado com sucesso",
+		"message":  "Áudio enviado com sucesso",
 	})
 }
 
@@ -464,9 +478,9 @@ func (h *WhatsAppHandler) SendFileMessage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
+		"success":  true,
 		"mediaUrl": mediaURL,
-		"message": "Arquivo enviado com sucesso",
+		"message":  "Arquivo enviado com sucesso",
 	})
 }
 
@@ -509,11 +523,11 @@ func saveMediaToDroplet(data []byte, filename string) (string, error) {
 
 	// Gerar nome único para o arquivo
 	ext := filepath.Ext(filename)
-	uniqueFilename := fmt.Sprintf("%s-%d%s", 
-		strings.TrimSuffix(filename, ext), 
-		time.Now().Unix() + rand.Int63n(1000), 
+	uniqueFilename := fmt.Sprintf("%s-%d%s",
+		strings.TrimSuffix(filename, ext),
+		time.Now().Unix()+rand.Int63n(1000),
 		ext)
-	
+
 	filePath := filepath.Join(uploadDir, uniqueFilename)
 
 	// Salvar arquivo
@@ -524,7 +538,6 @@ func saveMediaToDroplet(data []byte, filename string) (string, error) {
 	// Retornar URL pública para acessar o arquivo
 	return fmt.Sprintf("https://server.tappy.id/api/files/%s", uniqueFilename), nil
 }
-
 
 // KanbanHandler gerencia Kanban
 type KanbanHandler struct {
@@ -548,19 +561,19 @@ func (h *KanbanHandler) ListQuadros(c *gin.Context) {
 
 func (h *KanbanHandler) CreateQuadro(c *gin.Context) {
 	userID := c.GetString("user_id")
-	
+
 	var req struct {
 		Nome      string  `json:"nome" binding:"required"`
 		Cor       string  `json:"cor" binding:"required"`
 		Descricao *string `json:"descricao"`
 		Posicao   int     `json:"posicao"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	quadro := &models.Quadro{
 		Nome:      req.Nome,
 		Cor:       req.Cor,
@@ -569,32 +582,32 @@ func (h *KanbanHandler) CreateQuadro(c *gin.Context) {
 		UsuarioID: userID,
 		Ativo:     true,
 	}
-	
+
 	if err := h.kanbanService.CreateQuadro(quadro); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusCreated, quadro)
 }
 
 func (h *KanbanHandler) GetQuadro(c *gin.Context) {
 	quadroID := c.Param("id")
 	userID := c.GetString("user_id")
-	
+
 	quadro, err := h.kanbanService.GetQuadroByID(quadroID, userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Quadro não encontrado"})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, quadro)
 }
 
 func (h *KanbanHandler) UpdateQuadro(c *gin.Context) {
 	quadroID := c.Param("id")
 	userID := c.GetString("user_id")
-	
+
 	var req struct {
 		Nome      *string `json:"nome"`
 		Cor       *string `json:"cor"`
@@ -602,116 +615,116 @@ func (h *KanbanHandler) UpdateQuadro(c *gin.Context) {
 		Posicao   *int    `json:"posicao"`
 		Ativo     *bool   `json:"ativo"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	quadro, err := h.kanbanService.UpdateQuadro(quadroID, userID, req.Nome, req.Cor, req.Descricao, req.Posicao, req.Ativo)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, quadro)
 }
 
 func (h *KanbanHandler) DeleteQuadro(c *gin.Context) {
 	quadroID := c.Param("id")
 	userID := c.GetString("user_id")
-	
+
 	if err := h.kanbanService.DeleteQuadro(quadroID, userID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Quadro excluído com sucesso"})
 }
 
 // EditColumn edita o nome de uma coluna
 func (h *KanbanHandler) EditColumn(c *gin.Context) {
 	userID := c.GetString("user_id")
-	
+
 	var req struct {
 		QuadroID string `json:"quadroId" binding:"required"`
 		ColunaID string `json:"colunaId" binding:"required"`
 		NovoNome string `json:"novoNome" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	log.Printf("[KANBAN] EditColumn - UserID: %s, QuadroID: %s, ColunaID: %s, NovoNome: %s", userID, req.QuadroID, req.ColunaID, req.NovoNome)
-	
+
 	if err := h.kanbanService.EditColumn(req.QuadroID, req.ColunaID, req.NovoNome, userID); err != nil {
 		log.Printf("[KANBAN] EditColumn - Error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao editar coluna"})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Coluna editada com sucesso"})
 }
 
 // DeleteColumn exclui uma coluna
 func (h *KanbanHandler) DeleteColumn(c *gin.Context) {
 	userID := c.GetString("user_id")
-	
+
 	var req struct {
 		QuadroID string `json:"quadroId" binding:"required"`
 		ColunaID string `json:"colunaId" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	log.Printf("[KANBAN] DeleteColumn - UserID: %s, QuadroID: %s, ColunaID: %s", userID, req.QuadroID, req.ColunaID)
-	
+
 	if err := h.kanbanService.DeleteColumn(req.QuadroID, req.ColunaID, userID); err != nil {
 		log.Printf("[KANBAN] DeleteColumn - Error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao excluir coluna"})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Coluna excluída com sucesso"})
 }
 
 // CreateColumn cria uma nova coluna
 func (h *KanbanHandler) CreateColumn(c *gin.Context) {
 	userID := c.GetString("user_id")
-	
+
 	var req struct {
 		QuadroID string  `json:"quadroId" binding:"required"`
 		Nome     string  `json:"nome" binding:"required"`
 		Cor      *string `json:"cor"`
 		Posicao  int     `json:"posicao"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	log.Printf("[KANBAN] CreateColumn - UserID: %s, QuadroID: %s, Nome: %s, Posicao: %d", userID, req.QuadroID, req.Nome, req.Posicao)
-	
+
 	coluna, err := h.kanbanService.CreateColumn(req.QuadroID, req.Nome, req.Cor, req.Posicao, userID)
 	if err != nil {
 		log.Printf("[KANBAN] CreateColumn - Error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao criar coluna"})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, coluna)
 }
 
 // MoveCard move um card entre colunas
 func (h *KanbanHandler) MoveCard(c *gin.Context) {
 	userID := c.GetString("user_id")
-	
+
 	var req struct {
 		QuadroID       string `json:"quadroId" binding:"required"`
 		CardID         string `json:"cardId" binding:"required"`
@@ -719,21 +732,21 @@ func (h *KanbanHandler) MoveCard(c *gin.Context) {
 		TargetColumnID string `json:"targetColumnId" binding:"required"`
 		Posicao        int    `json:"posicao"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
-	log.Printf("[KANBAN] MoveCard - UserID: %s, QuadroID: %s, CardID: %s, From: %s, To: %s, Pos: %d", 
+
+	log.Printf("[KANBAN] MoveCard - UserID: %s, QuadroID: %s, CardID: %s, From: %s, To: %s, Pos: %d",
 		userID, req.QuadroID, req.CardID, req.SourceColumnID, req.TargetColumnID, req.Posicao)
-	
+
 	if err := h.kanbanService.MoveCard(req.QuadroID, req.CardID, req.SourceColumnID, req.TargetColumnID, req.Posicao, userID); err != nil {
 		log.Printf("[KANBAN] MoveCard - Error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao mover card"})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Card movido com sucesso"})
 }
 
@@ -741,16 +754,16 @@ func (h *KanbanHandler) MoveCard(c *gin.Context) {
 func (h *KanbanHandler) GetMetadata(c *gin.Context) {
 	userID := c.GetString("user_id")
 	quadroID := c.Param("id")
-	
+
 	log.Printf("[KANBAN] GetMetadata - UserID: %s, QuadroID: %s", userID, quadroID)
-	
+
 	metadata, err := h.kanbanService.GetMetadata(quadroID, userID)
 	if err != nil {
 		log.Printf("[KANBAN] GetMetadata - Error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao buscar metadados"})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, metadata)
 }
 
@@ -758,48 +771,48 @@ func (h *KanbanHandler) GetMetadata(c *gin.Context) {
 func (h *KanbanHandler) UpdateColumnColor(c *gin.Context) {
 	userID := c.GetString("user_id")
 	colunaID := c.Param("colunaId")
-	
+
 	var req struct {
 		Cor string `json:"cor" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	log.Printf("[KANBAN] UpdateColumnColor - UserID: %s, ColunaID: %s, NewColor: %s", userID, colunaID, req.Cor)
-	
+
 	if err := h.kanbanService.UpdateColumnColor(colunaID, userID, req.Cor); err != nil {
 		log.Printf("[KANBAN] UpdateColumnColor - Error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao atualizar cor da coluna"})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Cor da coluna atualizada com sucesso"})
 }
 
 // ReorderColumns reordena as colunas de um quadro
 func (h *KanbanHandler) ReorderColumns(c *gin.Context) {
 	userID := c.GetString("user_id")
-	
+
 	var req struct {
 		QuadroID    string                   `json:"quadroId" binding:"required"`
 		ColumnOrder []map[string]interface{} `json:"columnOrder" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	log.Printf("[KANBAN] ReorderColumns - UserID: %s, QuadroID: %s, Columns: %d", userID, req.QuadroID, len(req.ColumnOrder))
-	
+
 	if err := h.kanbanService.ReorderColumns(req.QuadroID, userID, req.ColumnOrder); err != nil {
 		log.Printf("[KANBAN] ReorderColumns - Error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao reordenar colunas"})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Colunas reordenadas com sucesso"})
 }

@@ -20,19 +20,17 @@ func Setup(container *services.Container) *gin.Engine {
 	// Inicializar WebSocket Hub
 	handlers.InitWebSocketHub()
 
-	// CORS será tratado pelo nginx em produção
-	// Manter CORS apenas para desenvolvimento local
-	if gin.Mode() == gin.DebugMode {
-		config := cors.DefaultConfig()
-		config.AllowOrigins = []string{
-			"http://localhost:3000", 
-			"http://localhost:3001",
-		}
-		config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
-		config.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
-		config.AllowCredentials = true
-		r.Use(cors.New(config))
+	// CORS - habilitado sempre para desenvolvimento
+	config := cors.DefaultConfig()
+	config.AllowOrigins = []string{
+		"http://localhost:3000", 
+		"http://localhost:3001",
+		"https://crm.tappy.id",
 	}
+	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+	config.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
+	config.AllowCredentials = true
+	r.Use(cors.New(config))
 
 	// Middleware de logging
 	r.Use(gin.Logger())
@@ -46,6 +44,13 @@ func Setup(container *services.Container) *gin.Engine {
 	kanbanHandler := handlers.NewKanbanHandler(container.KanbanService)
 	connectionHandler := handlers.NewConnectionHandler(container.ConnectionService)
 	respostaRapidaHandler := handlers.NewRespostaRapidaHandler(container.RespostaRapidaService)
+	
+	// Inicializar handlers para os 4 fluxos
+	anotacoesHandler := handlers.NewAnotacoesHandler(container.DB)
+	orcamentosHandler := handlers.NewOrcamentosHandler(container.DB) 
+	agendamentosHandler := handlers.NewAgendamentosHandler(container.DB)
+	assinaturasHandler := handlers.NewAssinaturasHandler(container.DB)
+	contatosHandler := handlers.NewContatosHandler(container.DB)
 
 	// Servir arquivos estáticos (uploads)
 	r.Static("/uploads", "./uploads")
@@ -156,15 +161,73 @@ func Setup(container *services.Container) *gin.Engine {
 			// Comandos Slash (antes das rotas com :id)
 			respostasRapidas.POST("/comando-slash", respostaRapidaHandler.ProcessarComandoSlash)
 
-			// Respostas Rápidas (rotas com :id por último)
+			// Respostas Rápidas
 			respostasRapidas.GET("/", respostaRapidaHandler.GetRespostasRapidas)
 			respostasRapidas.POST("/", respostaRapidaHandler.CreateRespostaRapida)
 			respostasRapidas.GET("/:id", respostaRapidaHandler.GetRespostaRapida)
+			respostasRapidas.PUT("/:id", respostaRapidaHandler.UpdateRespostaRapida)
+			respostasRapidas.DELETE("/:id", respostaRapidaHandler.DeleteRespostaRapida)
 			respostasRapidas.PUT("/:id/pausar", respostaRapidaHandler.TogglePausarRespostaRapida)
 			respostasRapidas.POST("/:id/executar", respostaRapidaHandler.ExecutarRespostaRapida)
 			respostasRapidas.GET("/:id/acoes", respostaRapidaHandler.GetAcoes)
 			respostasRapidas.POST("/:id/acoes", respostaRapidaHandler.CreateAcao)
 			respostasRapidas.PUT("/:id/acoes/reorder", respostaRapidaHandler.ReorderAcoes)
+		}
+
+		// Anotações
+		anotacoes := protected.Group("/anotacoes")
+		{
+			anotacoes.GET("", anotacoesHandler.ListAnotacoes)
+			anotacoes.GET("/:id", anotacoesHandler.GetAnotacao)
+			anotacoes.POST("", anotacoesHandler.CreateAnotacao)
+			anotacoes.PUT("/:id", anotacoesHandler.UpdateAnotacao)
+			anotacoes.DELETE("/:id", anotacoesHandler.DeleteAnotacao)
+			anotacoes.GET("/contato/:contato_id", anotacoesHandler.GetAnotacoesByContato)
+		}
+
+		// Orçamentos
+		orcamentos := protected.Group("/orcamentos")
+		{
+			orcamentos.GET("", orcamentosHandler.ListOrcamentos)
+			orcamentos.GET("/:id", orcamentosHandler.GetOrcamento)
+			orcamentos.POST("", orcamentosHandler.CreateOrcamento)
+			orcamentos.PUT("/:id", orcamentosHandler.UpdateOrcamento)
+			orcamentos.DELETE("/:id", orcamentosHandler.DeleteOrcamento)
+		}
+
+		// Agendamentos
+		agendamentos := protected.Group("/agendamentos")
+		{
+			agendamentos.GET("", agendamentosHandler.ListAgendamentos)
+			agendamentos.GET("/:id", agendamentosHandler.GetAgendamento)
+			agendamentos.POST("", agendamentosHandler.CreateAgendamento)
+			agendamentos.PUT("/:id", agendamentosHandler.UpdateAgendamento)
+			agendamentos.DELETE("/:id", agendamentosHandler.DeleteAgendamento)
+			agendamentos.GET("/proximos", agendamentosHandler.GetAgendamentosProximos)
+		}
+
+		// Assinaturas
+		assinaturas := protected.Group("/assinaturas")
+		{
+			assinaturas.GET("", assinaturasHandler.ListAssinaturas)
+			assinaturas.GET("/:id", assinaturasHandler.GetAssinatura)
+			assinaturas.POST("", assinaturasHandler.CreateAssinatura)
+			assinaturas.PUT("/:id", assinaturasHandler.UpdateAssinatura)
+			assinaturas.DELETE("/:id", assinaturasHandler.DeleteAssinatura)
+		}
+
+		// Contatos
+		contatos := protected.Group("/contatos")
+		{
+			contatos.GET("", contatosHandler.ListContatos)
+			contatos.GET("/stats", contatosHandler.GetContatosStats)
+			contatos.GET("/export", contatosHandler.ExportContatos)
+			contatos.POST("/import", contatosHandler.ImportContatos)
+			contatos.GET("/:id", contatosHandler.GetContato)
+			contatos.POST("", contatosHandler.CreateContato)
+			contatos.PUT("/:id", contatosHandler.UpdateContato)
+			contatos.DELETE("/:id", contatosHandler.DeleteContato)
+			contatos.POST("/sync", contatosHandler.SyncContatos)
 		}
 
 		// WhatsApp API (com middleware JWT)
@@ -376,12 +439,15 @@ func Setup(container *services.Container) *gin.Engine {
 				c.JSON(200, result)
 			})
 
-			// Rotas de mídia
-			whatsappAPI.POST("/chats/:chatId/voice", whatsappHandler.SendVoiceMessage)
+			// Rotas de mídia - usando handlers que esperam JSON com URLs
+			whatsappAPI.POST("/chats/:chatId/voice", whatsappMediaHandler.SendVoice)
 			whatsappAPI.POST("/chats/:chatId/image", whatsappHandler.SendImageMessage)
 			whatsappAPI.POST("/chats/:chatId/video", whatsappMediaHandler.SendVideoMessage)
 			whatsappAPI.POST("/chats/:chatId/file", whatsappHandler.SendFileMessage)
 			whatsappAPI.GET("/media/:mediaId", whatsappHandler.DownloadMedia)
+			
+			// Rota de upload e envio de mídia combinado
+			whatsappAPI.POST("/upload-and-send-media", whatsappMediaHandler.UploadAndSendMedia)
 			
 			// Reações
 			whatsappAPI.PUT("/messages/:messageId/reaction", func(c *gin.Context) {

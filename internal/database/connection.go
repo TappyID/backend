@@ -8,12 +8,17 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 )
 
 // Connect conecta ao banco de dados PostgreSQL
 func Connect(databaseURL string) (*gorm.DB, error) {
 	config := &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
+		NamingStrategy: schema.NamingStrategy{
+			SingularTable: false, // Use plural table names
+			NoLowerCase:   false, // Use lowercase
+		},
 	}
 
 	db, err := gorm.Open(postgres.Open(databaseURL), config)

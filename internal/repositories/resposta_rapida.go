@@ -144,6 +144,11 @@ func (r *RespostaRapidaRepository) CreateAcao(acao *models.AcaoResposta) error {
 	return r.db.Create(acao).Error
 }
 
+// DeleteAcoesByRespostaID deleta todas as ações de uma resposta
+func (r *RespostaRapidaRepository) DeleteAcoesByRespostaID(respostaID uuid.UUID) error {
+	return r.db.Where("resposta_rapida_id = ?", respostaID).Delete(&models.AcaoResposta{}).Error
+}
+
 // GetAcoesByResposta busca ações por resposta rápida
 func (r *RespostaRapidaRepository) GetAcoesByResposta(respostaID uuid.UUID) ([]models.AcaoResposta, error) {
 	var acoes []models.AcaoResposta

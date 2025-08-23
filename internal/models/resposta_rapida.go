@@ -26,6 +26,11 @@ type CategoriaResposta struct {
 	RespostasRapidas []RespostaRapida `json:"respostas_rapidas,omitempty" gorm:"foreignKey:CategoriaID"`
 }
 
+// TableName sobrescreve o nome da tabela para coincidir com a migração
+func (CategoriaResposta) TableName() string {
+	return "categorias_respostas"
+}
+
 // TriggerTipo define os tipos de trigger disponíveis
 type TriggerTipo string
 
@@ -74,6 +79,7 @@ type RespostaRapida struct {
 	Ativo   bool `json:"ativo" gorm:"default:true"`
 	Pausado bool `json:"pausado" gorm:"default:false"`
 	Ordem   int  `json:"ordem" gorm:"default:0"`
+	Fallback bool `json:"fallback" gorm:"default:false"` // Resposta usada quando nenhuma outra é encontrada
 
 	// Estatísticas
 	TotalExecucoes  int        `json:"total_execucoes" gorm:"default:0"`
@@ -129,6 +135,11 @@ type AcaoResposta struct {
 	RespostaRapida RespostaRapida `json:"resposta_rapida,omitempty" gorm:"foreignKey:RespostaRapidaID"`
 }
 
+// TableName sobrescreve o nome da tabela para coincidir com a migração
+func (AcaoResposta) TableName() string {
+	return "acoes_respostas"
+}
+
 // StatusExecucao define os status de execução
 type StatusExecucao string
 
@@ -167,6 +178,11 @@ type ExecucaoResposta struct {
 	Usuario        Usuario        `json:"usuario,omitempty" gorm:"foreignKey:UsuarioID"`
 }
 
+// TableName sobrescreve o nome da tabela para coincidir com a migração
+func (ExecucaoResposta) TableName() string {
+	return "execucoes_respostas"
+}
+
 // AgendamentoResposta representa um agendamento ativo de resposta rápida
 type AgendamentoResposta struct {
 	ID                  uuid.UUID   `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
@@ -189,6 +205,11 @@ type AgendamentoResposta struct {
 	// Relacionamentos
 	RespostaRapida RespostaRapida `json:"resposta_rapida,omitempty" gorm:"foreignKey:RespostaRapidaID"`
 	Usuario        Usuario        `json:"usuario,omitempty" gorm:"foreignKey:UsuarioID"`
+}
+
+// TableName sobrescreve o nome da tabela para coincidir com a migração
+func (AgendamentoResposta) TableName() string {
+	return "agendamentos_respostas"
 }
 
 // Métodos auxiliares para serialização JSON
