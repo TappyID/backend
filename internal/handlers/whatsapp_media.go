@@ -408,7 +408,7 @@ func (h *WhatsAppMediaHandler) UploadAndSendMedia(c *gin.Context) {
 	})
 }
 
-// SendVideoMessage envia vídeo via WhatsApp
+// SendVideoMessage envia vídeo via WhatsApp usando URL do blob
 func (h *WhatsAppMediaHandler) SendVideoMessage(c *gin.Context) {
 	// Validar token JWT
 	userID, err := utils.ValidateJWTFromHeader(c, h.authService)
@@ -420,39 +420,31 @@ func (h *WhatsAppMediaHandler) SendVideoMessage(c *gin.Context) {
 	sessionName := "user_" + userID
 	chatID := c.Param("chatId")
 
-	// Parse multipart form
-	err = c.Request.ParseMultipartForm(50 << 20) // 50MB max
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse form"})
+	var req struct {
+		VideoURL string `json:"videoUrl" binding:"required"`
+		Caption  string `json:"caption"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("[HANDLER] SendVideoMessage - JSON bind error: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
 
-	file, header, err := c.Request.FormFile("video")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No video file provided"})
-		return
-	}
-	defer file.Close()
+	log.Printf("[HANDLER] SendVideoMessage - Sending video URL: %s to chat: %s", req.VideoURL, chatID)
 
-	// Ler arquivo
-	videoData, err := io.ReadAll(file)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read video file"})
-		return
-	}
-
-	// Obter caption opcional
-	caption := c.Request.FormValue("caption")
-
-	// Enviar vídeo
-	err = h.whatsappService.SendVideoMessage(sessionName, chatID, videoData, header.Filename, caption)
+	// Usar o método SendVideo que trabalha com URLs
+	result, err := h.whatsappService.SendVideo(sessionName, chatID, req.VideoURL, req.Caption)
 	if err != nil {
 		log.Printf("[HANDLER] SendVideoMessage error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Video sent successfully"})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Video sent successfully",
+		"result":  result,
+	})
 }
 
 // Função auxiliar para validar tipos de arquivo
@@ -641,6 +633,41 @@ func (h *WhatsAppMediaHandler) StarMessage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    result,
+	})
+}
+
+// SendContact envia um contato (VCard)
+func (h *WhatsAppMediaHandler) SendContact(c *gin.Context) {
+	// Validar JWT
+	userID, err := utils.ValidateJWTFromHeader(c, h.authService)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token inválido"})
+		return
+	}
+
+	sessionName := "user_" + userID
+	chatID := c.Param("chatId")
+
+	var req struct {
+		ContactId   string `json:"contactId" binding:"required"`
+		ContactName string `json:"contactName"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dados inválidos"})
+		return
+	}
+
+	// Usar o serviço WhatsApp para enviar contato
+	result, err := h.whatsappService.SendContact(sessionName, chatID, req.ContactId, req.ContactName)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Contato enviado com sucesso",
+		"result":  result,
 	})
 }
 

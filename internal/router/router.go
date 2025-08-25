@@ -443,7 +443,8 @@ func Setup(container *services.Container) *gin.Engine {
 			whatsappAPI.POST("/chats/:chatId/voice", whatsappMediaHandler.SendVoice)
 			whatsappAPI.POST("/chats/:chatId/image", whatsappHandler.SendImageMessage)
 			whatsappAPI.POST("/chats/:chatId/video", whatsappMediaHandler.SendVideoMessage)
-			whatsappAPI.POST("/chats/:chatId/file", whatsappHandler.SendFileMessage)
+			whatsappAPI.POST("/chats/:chatId/file", whatsappMediaHandler.SendFile)
+			whatsappAPI.POST("/chats/:chatId/contact", whatsappMediaHandler.SendContact)
 			whatsappAPI.GET("/media/:mediaId", whatsappHandler.DownloadMedia)
 			
 			// Rota de upload e envio de mídia combinado

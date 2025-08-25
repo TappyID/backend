@@ -378,6 +378,7 @@ func (s *WhatsAppService) SendVoiceMessage(sessionName, chatID string, audioFile
 			"data":     base64Audio,
 		},
 		"convert":  true,
+		"ptt":      false, // Adicionar ptt=false conforme teste que funcionou
 		"reply_to": nil,
 	}
 
@@ -1066,37 +1067,80 @@ func (s *WhatsAppService) SendSeen(sessionName, chatID string, messageIDs []stri
 	return nil
 }
 
-// SendContactVcard envia um contato via vCard usando sendText como fallback
+// SendContactVcard envia um contato via vCard, com fallback para texto
 func (s *WhatsAppService) SendContactVcard(sessionName, chatID, contactID, name string) (interface{}, error) {
-	// Como /sendContactVcard não está implementado na WAHA API, vamos usar /sendText
-	endpoint := "/sendText"
+	log.Printf("[WHATSAPP] SendContactVcard - sessionName: %s, chatID: %s, contactID: %s, name: %s", sessionName, chatID, contactID, name)
 
-	// Criar mensagem de contato formatada
-	phoneNumber := strings.Replace(contactID, "@c.us", "", 1)
-	contactMessage := fmt.Sprintf("📞 *Contato*\n\n👤 *Nome:* %s\n📱 *Telefone:* +%s\n\n_Contato compartilhado via WhatsApp_",
-		name, phoneNumber)
-
+	// Primeiro tenta o endpoint nativo /sendContact
+	endpoint := "/sendContact"
 	body := map[string]interface{}{
+		"session": sessionName,
+		"chatId":  chatID,
+		"contact": map[string]interface{}{
+			"id":   contactID,
+			"name": name,
+		},
+	}
+
+	log.Printf("[WHATSAPP] SendContactVcard - Trying native endpoint: %s", endpoint)
+	resp, err := s.makeWAHARequest("POST", endpoint, "", body)
+	if err == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+			var result interface{}
+			if err := json.NewDecoder(resp.Body).Decode(&result); err == nil {
+				log.Printf("[WHATSAPP] SendContactVcard - Native endpoint success!")
+				return result, nil
+			}
+		}
+		log.Printf("[WHATSAPP] SendContactVcard - Native endpoint failed with status: %d", resp.StatusCode)
+		resp.Body.Close()
+	}
+
+	// Fallback para texto formatado
+	log.Printf("[WHATSAPP] SendContactVcard - Using text fallback")
+	endpoint = "/sendText"
+	
+	// Limpar o contactID removendo @c.us se existir
+	cleanPhone := contactID
+	if strings.HasSuffix(cleanPhone, "@c.us") {
+		cleanPhone = strings.TrimSuffix(cleanPhone, "@c.us")
+	}
+	
+	// Formatar o número brasileiro se possível
+	formattedPhone := cleanPhone
+	if len(cleanPhone) == 13 && strings.HasPrefix(cleanPhone, "55") {
+		// Formato brasileiro: 5518999999999 -> +55 18 99999-9999
+		formattedPhone = fmt.Sprintf("+%s %s %s-%s", 
+			cleanPhone[0:2],   // +55
+			cleanPhone[2:4],   // 18
+			cleanPhone[4:9],   // 99999
+			cleanPhone[9:13])  // 9999
+	} else if len(cleanPhone) >= 10 {
+		// Para outros formatos, apenas adicionar + no início
+		formattedPhone = "+" + cleanPhone
+	}
+	
+	contactMessage := fmt.Sprintf("📞 *Contato:*\n*Nome:* %s\n*Telefone:* %s", name, formattedPhone)
+	
+	body = map[string]interface{}{
 		"session": sessionName,
 		"chatId":  chatID,
 		"text":    contactMessage,
 	}
 
-	log.Printf("[WHATSAPP] SendContactVcard - sessionName: %s, chatID: %s, contactID: %s, name: %s", sessionName, chatID, contactID, name)
-	log.Printf("[WHATSAPP] SendContactVcard - endpoint: %s", endpoint)
-
-	resp, err := s.makeWAHARequest("POST", endpoint, "", body)
+	resp, err = s.makeWAHARequest("POST", endpoint, "", body)
 	if err != nil {
-		log.Printf("[WHATSAPP] SendContactVcard - makeWAHARequest error: %v", err)
+		log.Printf("[WHATSAPP] SendContactVcard - Fallback error: %v", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	log.Printf("[WHATSAPP] SendContactVcard - WAHA API response status: %d", resp.StatusCode)
+	log.Printf("[WHATSAPP] SendContactVcard - Fallback response status: %d", resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
-		log.Printf("[WHATSAPP] SendContactVcard - WAHA API error response: %s", string(body))
+		log.Printf("[WHATSAPP] SendContactVcard - Fallback error response: %s", string(body))
 		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -1106,12 +1150,15 @@ func (s *WhatsAppService) SendContactVcard(sessionName, chatID, contactID, name 
 		return nil, err
 	}
 
-	log.Printf("[WHATSAPP] SendContactVcard - Success!")
+	log.Printf("[WHATSAPP] SendContactVcard - Success with fallback!")
 	return result, nil
 }
 
-// SendLocation envia uma localização
+// SendLocation envia uma localização, com fallback para texto se não suportado
 func (s *WhatsAppService) SendLocation(sessionName, chatID string, latitude, longitude float64, title, address string) (interface{}, error) {
+	log.Printf("[WHATSAPP] SendLocation - sessionName: %s, chatID: %s, lat: %f, lng: %f, title: %s", sessionName, chatID, latitude, longitude, title)
+
+	// Primeiro tenta o endpoint nativo /sendLocation
 	endpoint := "/sendLocation"
 	body := map[string]interface{}{
 		"session":   sessionName,
@@ -1122,46 +1169,73 @@ func (s *WhatsAppService) SendLocation(sessionName, chatID string, latitude, lon
 		"address":   address,
 	}
 
-	log.Printf("[WHATSAPP] SendLocation - sessionName: %s, chatID: %s, lat: %f, lng: %f, title: %s", sessionName, chatID, latitude, longitude, title)
-	log.Printf("[WHATSAPP] SendLocation - endpoint: %s", endpoint)
-
+	log.Printf("[WHATSAPP] SendLocation - Trying native endpoint: %s", endpoint)
 	resp, err := s.makeWAHARequest("POST", endpoint, "", body)
+	if err == nil {
+		defer resp.Body.Close()
+		log.Printf("[WHATSAPP] SendLocation - Native endpoint response status: %d", resp.StatusCode)
+		
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err == nil {
+				var result interface{}
+				if err := json.Unmarshal(bodyBytes, &result); err == nil {
+					log.Printf("[WHATSAPP] SendLocation - Native endpoint success!")
+					return result, nil
+				}
+			}
+		}
+		
+		// Log do erro se status não for 2xx
+		if resp.StatusCode >= 400 {
+			errorBody, _ := io.ReadAll(resp.Body)
+			log.Printf("[WHATSAPP] SendLocation - Native endpoint failed: %s", string(errorBody))
+		}
+		resp.Body.Close()
+	}
+
+	// Fallback para texto formatado
+	log.Printf("[WHATSAPP] SendLocation - Using text fallback")
+	endpoint = "/sendText"
+	
+	// Formatar mensagem de localização
+	locationMessage := fmt.Sprintf("📍 *Localização:*\n*%s*\n\nLatitude: %f\nLongitude: %f", title, latitude, longitude)
+	if address != "" && address != title {
+		locationMessage += fmt.Sprintf("\nEndereço: %s", address)
+	}
+	
+	// Adicionar link do Google Maps
+	mapsUrl := fmt.Sprintf("https://maps.google.com/maps?q=%f,%f", latitude, longitude)
+	locationMessage += fmt.Sprintf("\n\n🗺️ Ver no mapa: %s", mapsUrl)
+	
+	body = map[string]interface{}{
+		"session": sessionName,
+		"chatId":  chatID,
+		"text":    locationMessage,
+	}
+
+	resp, err = s.makeWAHARequest("POST", endpoint, "", body)
 	if err != nil {
-		log.Printf("[WHATSAPP] SendLocation - makeWAHARequest error: %v", err)
+		log.Printf("[WHATSAPP] SendLocation - Fallback error: %v", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	log.Printf("[WHATSAPP] SendLocation - WAHA API response status: %d", resp.StatusCode)
+	log.Printf("[WHATSAPP] SendLocation - Fallback response status: %d", resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
-		log.Printf("[WHATSAPP] SendLocation - WAHA API error response: %s", string(body))
+		log.Printf("[WHATSAPP] SendLocation - Fallback error response: %s", string(body))
 		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Ler o corpo da resposta
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("[WHATSAPP] SendLocation - Error reading response body: %v", err)
+	var result interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[WHATSAPP] SendLocation - JSON decode error: %v", err)
 		return nil, err
 	}
 
-	// Se não há conteúdo, retornar sucesso simples
-	if len(bodyBytes) == 0 {
-		log.Printf("[WHATSAPP] SendLocation - Success! (empty response)")
-		return map[string]interface{}{"success": true}, nil
-	}
-
-	// Tentar fazer parse do JSON
-	var result interface{}
-	if err := json.Unmarshal(bodyBytes, &result); err != nil {
-		log.Printf("[WHATSAPP] SendLocation - JSON decode error: %v, body: %s", err, string(bodyBytes))
-		// Retornar sucesso mesmo com erro de parse, já que a API retornou 200
-		return map[string]interface{}{"success": true, "raw_response": string(bodyBytes)}, nil
-	}
-
-	log.Printf("[WHATSAPP] SendLocation - Success!")
+	log.Printf("[WHATSAPP] SendLocation - Success with fallback!")
 	return result, nil
 }
 
@@ -1486,11 +1560,11 @@ func (s *WhatsAppService) SendFile(sessionName, chatID, fileURL, filename, capti
 	body := map[string]interface{}{
 		"session": sessionName,
 		"chatId":  chatID,
-		"file": map[string]string{
-			"url": fileURL,
+		"file": map[string]interface{}{
+			"url":      fileURL,
+			"filename": filename,
 		},
-		"filename": filename,
-		"caption":  caption,
+		"caption": caption,
 	}
 
 	log.Printf("[WHATSAPP] SendFile - sessionName: %s, chatID: %s, fileURL: %s, filename: %s", sessionName, chatID, fileURL, filename)
@@ -1520,22 +1594,24 @@ func (s *WhatsAppService) SendFile(sessionName, chatID, fileURL, filename, capti
 	return result, nil
 }
 
-// SendVoice envia um áudio
+// SendVoice envia um áudio (método corrigido com configurações dos testes)
 func (s *WhatsAppService) SendVoice(sessionName, chatID, audioURL string) (interface{}, error) {
-	endpoint := "/sendVoice"
-	body := map[string]interface{}{
+	log.Printf("[WHATSAPP] POST /sendVoice - Sending voice via URL to chat: %s", chatID)
+
+	payload := map[string]interface{}{
 		"session": sessionName,
 		"chatId":  chatID,
-		"file": map[string]string{
-			"url": audioURL,
+		"file": map[string]interface{}{
+			"url":      audioURL,
+			"mimetype": "audio/ogg; codecs=opus",
 		},
+		"convert": true,
+		"ptt":     false, // Configuração que funcionou no teste
 	}
 
-	log.Printf("[WHATSAPP] SendVoice - sessionName: %s, chatID: %s, audioURL: %s", sessionName, chatID, audioURL)
-
-	resp, err := s.makeWAHARequest("POST", endpoint, "", body)
+	resp, err := s.makeWAHARequest("POST", "/sendVoice", "", payload)
 	if err != nil {
-		log.Printf("[WHATSAPP] SendVoice - makeWAHARequest error: %v", err)
+		log.Printf("[WHATSAPP] POST /sendVoice - Request error: %v", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -1543,9 +1619,9 @@ func (s *WhatsAppService) SendVoice(sessionName, chatID, audioURL string) (inter
 	log.Printf("[WHATSAPP] SendVoice - WAHA API response status: %d", resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("[WHATSAPP] SendVoice - WAHA API error response: %s", string(body))
-		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("[WHATSAPP] POST /sendVoice - API error: status %d, body: %s", resp.StatusCode, string(bodyBytes))
+		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var result interface{}
@@ -1554,28 +1630,29 @@ func (s *WhatsAppService) SendVoice(sessionName, chatID, audioURL string) (inter
 		return nil, err
 	}
 
-	log.Printf("[WHATSAPP] SendVoice - Success!")
+	log.Printf("[WHATSAPP] POST /sendVoice - Success for chat: %s", chatID)
 	return result, nil
 }
 
-// SendVideo envia um vídeo com fallback para texto
+// SendVideo envia um vídeo com configurações dos testes funcionais
 func (s *WhatsAppService) SendVideo(sessionName, chatID, videoURL, caption string) (interface{}, error) {
-	endpoint := "/sendVideo"
-	body := map[string]interface{}{
+	log.Printf("[WHATSAPP] POST /sendVideo - Sending video via URL to chat: %s", chatID)
+
+	payload := map[string]interface{}{
 		"session": sessionName,
 		"chatId":  chatID,
 		"file": map[string]interface{}{
-			"mimetype": "video/mp4",
-			"filename": "video.mp4",
 			"url":      videoURL,
+			"mimetype": "video/mp4",
 		},
-		"caption": caption,
-		"convert": true,
+		"convert": true, // Configuração que funcionou no teste
 	}
 
-	log.Printf("[WHATSAPP] SendVideo - sessionName: %s, chatID: %s, videoURL: %s", sessionName, chatID, videoURL)
+	if caption != "" {
+		payload["caption"] = caption
+	}
 
-	resp, err := s.makeWAHARequest("POST", endpoint, "", body)
+	resp, err := s.makeWAHARequest("POST", "/sendVideo", "", payload)
 	if err != nil {
 		log.Printf("[WHATSAPP] SendVideo - makeWAHARequest error: %v", err)
 		return nil, err
@@ -1600,9 +1677,9 @@ func (s *WhatsAppService) SendVideo(sessionName, chatID, videoURL, caption strin
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("[WHATSAPP] SendVideo - WAHA API error response: %s", string(body))
-		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("[WHATSAPP] SendVideo - WAHA API error response: %s", string(bodyBytes))
+		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var result interface{}
@@ -1611,7 +1688,7 @@ func (s *WhatsAppService) SendVideo(sessionName, chatID, videoURL, caption strin
 		return nil, err
 	}
 
-	log.Printf("[WHATSAPP] SendVideo - Success!")
+	log.Printf("[WHATSAPP] POST /sendVideo - Success for chat: %s", chatID)
 	return result, nil
 }
 
@@ -2157,3 +2234,52 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 	// TODO: Implementar envio de email via SMTP
 	return nil
 }
+
+// SendContact envia um contato via WAHA API
+func (s *WhatsAppService) SendContact(sessionName, chatID, contactId, contactName string) (interface{}, error) {
+	endpoint := "/sendContactVcard"
+	body := map[string]interface{}{
+		"session": sessionName,
+		"chatId":  chatID,
+		"contactId": contactId,
+		"contactName": contactName,
+	}
+
+	log.Printf("[WHATSAPP] SendContact - sessionName: %s, chatID: %s, contactId: %s", sessionName, chatID, contactId)
+
+	resp, err := s.makeWAHARequest("POST", endpoint, "", body)
+	if err != nil {
+		log.Printf("[WHATSAPP] SendContact - makeWAHARequest error: %v", err)
+		// Se o endpoint VCard não funcionar, vamos fallback para texto
+		return s.sendContactAsText(sessionName, chatID, contactId, contactName)
+	}
+	defer resp.Body.Close()
+
+	log.Printf("[WHATSAPP] SendContact - WAHA API response status: %d", resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("[WHATSAPP] SendContact - WAHA API error response: %s", string(bodyBytes))
+		// Fallback para envio como texto
+		return s.sendContactAsText(sessionName, chatID, contactId, contactName)
+	}
+
+	var result interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[WHATSAPP] SendContact - JSON decode error: %v", err)
+		return s.sendContactAsText(sessionName, chatID, contactId, contactName)
+	}
+
+	log.Printf("[WHATSAPP] SendContact - Success!")
+	return result, nil
+}
+
+// sendContactAsText envia contato como mensagem de texto (fallback)
+func (s *WhatsAppService) sendContactAsText(sessionName, chatID, contactId, contactName string) (interface{}, error) {
+	log.Printf("[WHATSAPP] SendContact - Using text fallback for contact: %s", contactId)
+	
+	text := fmt.Sprintf("📞 *Contato*\n\n*Nome:* %s\n*Telefone:* %s", contactName, contactId)
+	
+	return s.SendMessage(sessionName, chatID, text)
+}
+
