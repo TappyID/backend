@@ -21,6 +21,26 @@ import (
 	"gorm.io/gorm"
 )
 
+// Services struct que contém todos os serviços
+type Services struct {
+	WhatsAppService       *WhatsAppService
+	KanbanService         *KanbanService
+	FluxoExecutionService *FluxoExecutionService
+}
+
+// NewServices cria uma nova instância de Services
+func NewServices(db *gorm.DB, redisClient *redis.Client, cfg *config.Config) *Services {
+	whatsAppService := NewWhatsAppService(db, cfg)
+	kanbanService := NewKanbanService(db)
+	fluxoExecutionService := NewFluxoExecutionService(db, whatsAppService, kanbanService)
+
+	return &Services{
+		WhatsAppService:       whatsAppService,
+		KanbanService:         kanbanService,
+		FluxoExecutionService: fluxoExecutionService,
+	}
+}
+
 // UserService gerencia operações de usuários
 type UserService struct {
 	db *gorm.DB
@@ -53,6 +73,94 @@ func (s *UserService) Create(usuario *models.Usuario) error {
 
 func (s *UserService) Update(usuario *models.Usuario) error {
 	return s.db.Save(usuario).Error
+}
+
+// ListUsers lista usuários com filtros
+func (s *UserService) ListUsers(currentUserID, tipo, status, search string) ([]models.Usuario, error) {
+	var usuarios []models.Usuario
+	query := s.db.Where("id != ?", currentUserID) // Excluir usuário atual
+
+	// Filtrar por tipo se especificado
+	if tipo != "" && tipo != "todos" {
+		query = query.Where("tipo = ?", tipo)
+	}
+
+	// Filtrar por status (ativo/inativo)
+	if status != "" && status != "todos" {
+		if status == "ativo" {
+			query = query.Where("ativo = ?", true)
+		} else if status == "inativo" {
+			query = query.Where("ativo = ?", false)
+		}
+	}
+
+	// Busca por nome ou email
+	if search != "" {
+		query = query.Where("nome ILIKE ? OR email ILIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+
+	// Ordenar por nome
+	query = query.Order("nome ASC")
+
+	if err := query.Find(&usuarios).Error; err != nil {
+		return nil, err
+	}
+
+	return usuarios, nil
+}
+
+// GetUserStats retorna estatísticas de um usuário
+func (s *UserService) GetUserStats(userID string) (map[string]interface{}, error) {
+	var stats map[string]interface{} = make(map[string]interface{})
+
+	// Contar atendimentos hoje (mock - implementar com tabela atendimentos)
+	stats["atendimentosHoje"] = 0
+	stats["atendimentosTotal"] = 0
+	stats["tempoMedioAtendimento"] = 0.0
+	stats["avaliacaoMedia"] = 0.0
+	stats["ticketsResolvidos"] = 0
+	stats["ticketsPendentes"] = 0
+
+	return stats, nil
+}
+
+// UpdateUserStatus atualiza status do usuário
+func (s *UserService) UpdateUserStatus(userID string, ativo bool) error {
+	return s.db.Model(&models.Usuario{}).Where("id = ?", userID).Update("ativo", ativo).Error
+}
+
+// CreateUserWithDefaults cria usuário com configurações padrão
+func (s *UserService) CreateUserWithDefaults(usuario *models.Usuario) error {
+	// Hash da senha antes de salvar
+	// TODO: Implementar hash da senha
+	
+	// Definir valores padrão
+	usuario.Ativo = true
+
+	return s.db.Create(usuario).Error
+}
+
+// DeleteUser desativa usuário (soft delete)
+func (s *UserService) DeleteUser(userID string) error {
+	return s.db.Model(&models.Usuario{}).Where("id = ?", userID).Update("ativo", false).Error
+}
+
+// GetUsersByType retorna usuários por tipo
+func (s *UserService) GetUsersByType(tipo models.TipoUsuario) ([]models.Usuario, error) {
+	var usuarios []models.Usuario
+	if err := s.db.Where("tipo = ? AND ativo = ?", tipo, true).Find(&usuarios).Error; err != nil {
+		return nil, err
+	}
+	return usuarios, nil
+}
+
+// GetByEmail busca usuário por email
+func (s *UserService) GetByEmail(email string) (*models.Usuario, error) {
+	var usuario models.Usuario
+	if err := s.db.First(&usuario, "email = ?", email).Error; err != nil {
+		return nil, err
+	}
+	return &usuario, nil
 }
 
 // WhatsAppService gerencia integração com WhatsApp

@@ -154,14 +154,16 @@ func (AvaliacaoNps) TableName() string {
 
 type Fluxo struct {
 	BaseModel
-	Nome      string  `gorm:"not null" json:"nome"`
-	Descricao *string `json:"descricao"`
-	Ativo     bool    `gorm:"default:true" json:"ativo"`
-	QuadroID  string  `gorm:"not null" json:"quadroId"`
+	Nome       string  `gorm:"not null" json:"nome"`
+	Descricao  *string `json:"descricao"`
+	Ativo      bool    `gorm:"default:true" json:"ativo"`
+	QuadroID   string  `gorm:"not null" json:"quadroId"`
+	AgenteIaID *string `json:"agenteIaId"`
 
 	// Relacionamentos
-	Quadro Quadro    `gorm:"foreignKey:QuadroID" json:"quadro,omitempty"`
-	Nos    []FluxoNo `gorm:"foreignKey:FluxoID" json:"nos,omitempty"`
+	Quadro   Quadro    `gorm:"foreignKey:QuadroID" json:"quadro,omitempty"`
+	AgenteIa *AgenteIa `gorm:"foreignKey:AgenteIaID" json:"agenteIa,omitempty"`
+	Nos      []FluxoNo `gorm:"foreignKey:FluxoID" json:"nos,omitempty"`
 }
 
 func (Fluxo) TableName() string {
@@ -265,4 +267,53 @@ type Cobranca struct {
 
 func (Cobranca) TableName() string {
 	return "cobrancas"
+}
+
+// AgenteIa representa um agente de IA para automação
+type AgenteIa struct {
+	ID          string     `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
+	UsuarioID   string     `gorm:"not null;type:uuid" json:"usuarioId"`
+	Nome        string     `gorm:"not null;size:255" json:"nome"`
+	Descricao   *string    `gorm:"size:1000" json:"descricao"`
+	Prompt      string     `gorm:"not null;type:text" json:"prompt"`
+	Modelo      string     `gorm:"not null;size:100" json:"modelo"` // deepseek, chatgpt, etc
+	TokensUsados int64     `gorm:"default:0" json:"tokensUsados"`
+	Nicho       *string    `gorm:"size:255" json:"nicho"`
+	Ativo       bool       `gorm:"default:true" json:"ativo"`
+	CreatedAt   time.Time  `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt   time.Time  `gorm:"autoUpdateTime" json:"updatedAt"`
+
+	// Relacionamentos
+	Usuario Usuario `gorm:"foreignKey:UsuarioID" json:"usuario,omitempty"`
+	Fluxos  []Fluxo `gorm:"foreignKey:AgenteIaID" json:"fluxos,omitempty"`
+}
+
+func (AgenteIa) TableName() string {
+	return "agentes_ia"
+}
+
+// Contrato representa um contrato digital
+type Contrato struct {
+	ID           string     `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
+	UsuarioID    string     `gorm:"not null;type:uuid" json:"usuarioId"`
+	ContatoID    *string    `gorm:"type:uuid" json:"contatoId"`
+	Titulo       string     `gorm:"not null;size:255" json:"titulo"`
+	Conteudo     string     `gorm:"not null;type:text" json:"conteudo"`
+	Valor        *float64   `json:"valor"`
+	Status       string     `gorm:"default:RASCUNHO;size:50" json:"status"` // RASCUNHO, ENVIADO, ASSINADO, CANCELADO
+	DataEnvio    *time.Time `json:"dataEnvio"`
+	DataAssinatura *time.Time `json:"dataAssinatura"`
+	AssinaturaDigital *string `gorm:"type:text" json:"assinaturaDigital"`
+	HashContrato *string    `gorm:"size:255" json:"hashContrato"`
+	CreatedAt    time.Time  `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt    time.Time  `gorm:"autoUpdateTime" json:"updatedAt"`
+
+	// Relacionamentos
+	Usuario Usuario  `gorm:"foreignKey:UsuarioID" json:"usuario,omitempty"`
+	Contato *Contato `gorm:"foreignKey:ContatoID" json:"contato,omitempty"`
+	Fluxos  []Fluxo  `gorm:"foreignKey:ContratoID" json:"fluxos,omitempty"`
+}
+
+func (Contrato) TableName() string {
+	return "contratos"
 }

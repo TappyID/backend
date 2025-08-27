@@ -23,7 +23,7 @@ func Setup(container *services.Container) *gin.Engine {
 	// CORS - habilitado sempre para desenvolvimento
 	config := cors.DefaultConfig()
 	config.AllowOrigins = []string{
-		"http://localhost:3000", 
+		"http://localhost:3000",
 		"http://localhost:3001",
 		"https://crm.tappy.id",
 	}
@@ -39,18 +39,20 @@ func Setup(container *services.Container) *gin.Engine {
 	// Inicializar handlers
 	authHandler := handlers.NewAuthHandler(container.AuthService)
 	userHandler := handlers.NewUserHandler(container.UserService)
-	whatsappHandler := handlers.NewWhatsAppHandler(container.WhatsAppService)
-	whatsappMediaHandler := handlers.NewWhatsAppMediaHandler(container.WhatsAppService, container.AuthService)
+	contatoHandler := handlers.NewContatosHandler(container.DB)
 	kanbanHandler := handlers.NewKanbanHandler(container.KanbanService)
-	connectionHandler := handlers.NewConnectionHandler(container.ConnectionService)
+	agendamentoHandler := handlers.NewAgendamentosHandler(container.DB)
+	orcamentoHandler := handlers.NewOrcamentosHandler(container.DB)
+	whatsAppHandler := handlers.NewWhatsAppHandler(container.WhatsAppService)
+	fluxosHandler := handlers.NewFluxosHandler(container.DB, container.FluxoExecutionService)
 	respostaRapidaHandler := handlers.NewRespostaRapidaHandler(container.RespostaRapidaService)
-	
-	// Inicializar handlers para os 4 fluxos
+	connectionHandler := handlers.NewConnectionHandler(container.ConnectionService)
 	anotacoesHandler := handlers.NewAnotacoesHandler(container.DB)
-	orcamentosHandler := handlers.NewOrcamentosHandler(container.DB) 
-	agendamentosHandler := handlers.NewAgendamentosHandler(container.DB)
 	assinaturasHandler := handlers.NewAssinaturasHandler(container.DB)
-	contatosHandler := handlers.NewContatosHandler(container.DB)
+	whatsappMediaHandler := handlers.NewWhatsAppMediaHandler(container.WhatsAppService, container.AuthService)
+	filasHandler := handlers.NewFilasHandler(container.DB)
+	tagsHandler := handlers.NewTagsHandler(container.DB, container.AuthService)
+	alertasHandler := handlers.NewAlertasHandler(container.DB, container.AuthService)
 
 	// Servir arquivos estáticos (uploads)
 	r.Static("/uploads", "./uploads")
@@ -75,7 +77,6 @@ func Setup(container *services.Container) *gin.Engine {
 
 	// WebSocket route (with JWT auth via query param)
 	r.GET("/ws", handlers.NewWebSocketHandler(container.AuthService, container.Config.JWTSecret))
-
 
 	// Webhook específico para respostas rápidas
 	r.POST("/webhooks/resposta-rapida", respostaRapidaHandler.ProcessarMensagemWebhook)
@@ -102,12 +103,12 @@ func Setup(container *services.Container) *gin.Engine {
 		// WhatsApp
 		whatsapp := protected.Group("/whatsapp")
 		{
-			whatsapp.POST("/sessions", whatsappHandler.CreateSession)
-			whatsapp.GET("/sessions", whatsappHandler.ListSessions)
-			whatsapp.GET("/sessions/:id", whatsappHandler.GetSession)
-			whatsapp.POST("/sessions/:id/start", whatsappHandler.StartSession)
-			whatsapp.POST("/sessions/:id/stop", whatsappHandler.StopSession)
-			whatsapp.GET("/sessions/:id/qr", whatsappHandler.GetQRCode)
+			whatsapp.POST("/sessions", whatsAppHandler.CreateSession)
+			whatsapp.GET("/sessions", whatsAppHandler.ListSessions)
+			whatsapp.GET("/sessions/:id", whatsAppHandler.GetSession)
+			whatsapp.POST("/sessions/:id/start", whatsAppHandler.StartSession)
+			whatsapp.POST("/sessions/:id/stop", whatsAppHandler.StopSession)
+			whatsapp.GET("/sessions/:id/qr", whatsAppHandler.GetQRCode)
 		}
 
 		// Kanban
@@ -132,11 +133,9 @@ func Setup(container *services.Container) *gin.Engine {
 		// Connections
 		connections := protected.Group("/connections")
 		{
-			connections.GET("/", connectionHandler.GetUserConnections)
-			connections.GET("/whatsapp", connectionHandler.GetWhatsAppConnection)
-			connections.GET("/:platform", connectionHandler.GetUserConnection)
-			connections.POST("/", connectionHandler.CreateOrUpdateConnection)
-			connections.PUT("/:platform", connectionHandler.UpdateConnection)
+			connections.GET("/", func(c *gin.Context) {
+				c.JSON(200, gin.H{"message": "Connections"})
+			})
 			connections.POST("/whatsapp/sync/:sessionName", connectionHandler.SyncWhatsAppConnection)
 			connections.DELETE("/whatsapp/:sessionName", connectionHandler.DisconnectWhatsApp)
 		}
@@ -185,49 +184,109 @@ func Setup(container *services.Container) *gin.Engine {
 			anotacoes.GET("/contato/:contato_id", anotacoesHandler.GetAnotacoesByContato)
 		}
 
-		// Orçamentos
-		orcamentos := protected.Group("/orcamentos")
-		{
-			orcamentos.GET("", orcamentosHandler.ListOrcamentos)
-			orcamentos.GET("/:id", orcamentosHandler.GetOrcamento)
-			orcamentos.POST("", orcamentosHandler.CreateOrcamento)
-			orcamentos.PUT("/:id", orcamentosHandler.UpdateOrcamento)
-			orcamentos.DELETE("/:id", orcamentosHandler.DeleteOrcamento)
-		}
-
 		// Agendamentos
 		agendamentos := protected.Group("/agendamentos")
 		{
-			agendamentos.GET("", agendamentosHandler.ListAgendamentos)
-			agendamentos.GET("/:id", agendamentosHandler.GetAgendamento)
-			agendamentos.POST("", agendamentosHandler.CreateAgendamento)
-			agendamentos.PUT("/:id", agendamentosHandler.UpdateAgendamento)
-			agendamentos.DELETE("/:id", agendamentosHandler.DeleteAgendamento)
-			agendamentos.GET("/proximos", agendamentosHandler.GetAgendamentosProximos)
+			agendamentos.GET("", agendamentoHandler.ListAgendamentos)
+			agendamentos.GET("/:id", agendamentoHandler.GetAgendamento)
+			agendamentos.POST("", agendamentoHandler.CreateAgendamento)
+			agendamentos.PUT("/:id", agendamentoHandler.UpdateAgendamento)
+			agendamentos.DELETE("/:id", agendamentoHandler.DeleteAgendamento)
+			agendamentos.GET("/proximos", agendamentoHandler.GetAgendamentosProximos)
+		}
+
+		// Orçamentos
+		orcamentos := protected.Group("/orcamentos")
+		{
+			orcamentos.GET("", orcamentoHandler.ListOrcamentos)
+			orcamentos.GET("/:id", orcamentoHandler.GetOrcamento)
+			orcamentos.POST("", orcamentoHandler.CreateOrcamento)
+			orcamentos.PUT("/:id", orcamentoHandler.UpdateOrcamento)
+			orcamentos.DELETE("/:id", orcamentoHandler.DeleteOrcamento)
 		}
 
 		// Assinaturas
 		assinaturas := protected.Group("/assinaturas")
 		{
-			assinaturas.GET("", assinaturasHandler.ListAssinaturas)
+			assinaturas.GET("/", assinaturasHandler.ListAssinaturas)
+			assinaturas.POST("/", assinaturasHandler.CreateAssinatura)
 			assinaturas.GET("/:id", assinaturasHandler.GetAssinatura)
-			assinaturas.POST("", assinaturasHandler.CreateAssinatura)
 			assinaturas.PUT("/:id", assinaturasHandler.UpdateAssinatura)
 			assinaturas.DELETE("/:id", assinaturasHandler.DeleteAssinatura)
+		}
+
+		// Filas
+		filas := protected.Group("/filas")
+		{
+			filas.GET("/", filasHandler.ListarFilas)
+			filas.POST("/", filasHandler.CriarFila)
+			filas.GET("/:id", filasHandler.ObterFila)
+			filas.PUT("/:id", filasHandler.AtualizarFila)
+			filas.DELETE("/:id", filasHandler.DeletarFila)
+			filas.PATCH("/:id/toggle", filasHandler.ToggleFilaStatus)
+			filas.POST("/reordenar", filasHandler.ReordenarFilas)
+			filas.POST("/:id/duplicar", filasHandler.DuplicarFila)
+		}
+
+		// Tags
+		tags := protected.Group("/tags")
+		{
+			tags.GET("/", tagsHandler.ListarTags)
+			tags.POST("/", tagsHandler.CriarTag)
+			tags.GET("/favoritas", tagsHandler.ListarTagsFavoritas)
+			tags.GET("/populares", tagsHandler.ListarTagsPopulares)
+			tags.GET("/:id", tagsHandler.ObterTag)
+			tags.PUT("/:id", tagsHandler.AtualizarTag)
+			tags.DELETE("/:id", tagsHandler.DeletarTag)
+		}
+
+		// Alertas
+		alertas := protected.Group("/alertas")
+		{
+			alertas.GET("/", alertasHandler.ListarAlertas)
+			alertas.POST("/", alertasHandler.CriarAlerta)
+			alertas.GET("/stats", alertasHandler.ObterEstatisticasAlertas)
+			alertas.GET("/:id", alertasHandler.ObterAlerta)
+			alertas.PUT("/:id", alertasHandler.AtualizarAlerta)
+			alertas.DELETE("/:id", alertasHandler.DeletarAlerta)
+			alertas.PATCH("/:id/status", alertasHandler.AlternarStatusAlerta)
+			alertas.GET("/:id/historico", alertasHandler.ObterHistoricoAlerta)
 		}
 
 		// Contatos
 		contatos := protected.Group("/contatos")
 		{
-			contatos.GET("", contatosHandler.ListContatos)
-			contatos.GET("/stats", contatosHandler.GetContatosStats)
-			contatos.GET("/export", contatosHandler.ExportContatos)
-			contatos.POST("/import", contatosHandler.ImportContatos)
-			contatos.GET("/:id", contatosHandler.GetContato)
-			contatos.POST("", contatosHandler.CreateContato)
-			contatos.PUT("/:id", contatosHandler.UpdateContato)
-			contatos.DELETE("/:id", contatosHandler.DeleteContato)
-			contatos.POST("/sync", contatosHandler.SyncContatos)
+			contatos.GET("", contatoHandler.ListContatos)
+			contatos.GET("/stats", contatoHandler.GetContatosStats)
+			contatos.GET("/export", contatoHandler.ExportContatos)
+			contatos.POST("/import", contatoHandler.ImportContatos)
+			contatos.GET("/:id", contatoHandler.GetContato)
+			contatos.POST("", contatoHandler.CreateContato)
+			contatos.PUT("/:id", contatoHandler.UpdateContato)
+			contatos.DELETE("/:id", contatoHandler.DeleteContato)
+			contatos.POST("/sync", contatoHandler.SyncContatos)
+		}
+
+		// Fluxos (Automation Workflows)
+		fluxos := protected.Group("/fluxos")
+		{
+			fluxos.GET("", fluxosHandler.ListFluxos)
+			fluxos.POST("", fluxosHandler.CreateFluxo)
+			fluxos.GET("/stats", fluxosHandler.GetFluxosStats)
+			fluxos.GET("/:id", fluxosHandler.GetFluxo)
+			fluxos.PUT("/:id", fluxosHandler.UpdateFluxo)
+			fluxos.DELETE("/:id", fluxosHandler.DeleteFluxo)
+			fluxos.PUT("/:id/toggle", fluxosHandler.ToggleFluxo)
+			fluxos.POST("/:id/execute", fluxosHandler.ExecuteFluxo)
+
+			// Nodes
+			fluxos.POST("/:id/nodes", fluxosHandler.CreateFluxoNo)
+			fluxos.PUT("/:id/nodes/:nodeId", fluxosHandler.UpdateFluxoNo)
+			fluxos.DELETE("/:id/nodes/:nodeId", fluxosHandler.DeleteFluxoNo)
+
+			// Connections
+			fluxos.POST("/:id/connections", fluxosHandler.CreateFluxoConexao)
+			fluxos.DELETE("/:id/connections/:connectionId", fluxosHandler.DeleteFluxoConexao)
 		}
 
 		// WhatsApp API (com middleware JWT)
@@ -292,7 +351,6 @@ func Setup(container *services.Container) *gin.Engine {
 				c.JSON(200, groups)
 			})
 
-
 			whatsappAPI.GET("/chats/:chatId/messages", func(c *gin.Context) {
 				// Autenticação via header Authorization
 				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
@@ -307,17 +365,17 @@ func Setup(container *services.Container) *gin.Engine {
 				// Parse query parameters for pagination
 				limitStr := c.DefaultQuery("limit", "50")
 				offsetStr := c.DefaultQuery("offset", "0")
-				
+
 				limit, err := strconv.Atoi(limitStr)
 				if err != nil {
 					limit = 50
 				}
-				
+
 				offset, err := strconv.Atoi(offsetStr)
 				if err != nil {
 					offset = 0
 				}
-				
+
 				messages, err = container.WhatsAppService.GetChatMessages(sessionName, chatID, limit, offset)
 				if err != nil {
 					c.JSON(500, gin.H{"error": err.Error()})
@@ -354,7 +412,7 @@ func Setup(container *services.Container) *gin.Engine {
 				} else {
 					result, err = container.WhatsAppService.SendMessage(sessionName, chatID, req.Text)
 				}
-				
+
 				if err != nil {
 					c.JSON(500, gin.H{"error": err.Error()})
 					return
@@ -441,15 +499,15 @@ func Setup(container *services.Container) *gin.Engine {
 
 			// Rotas de mídia - usando handlers que esperam JSON com URLs
 			whatsappAPI.POST("/chats/:chatId/voice", whatsappMediaHandler.SendVoice)
-			whatsappAPI.POST("/chats/:chatId/image", whatsappHandler.SendImageMessage)
+			whatsappAPI.POST("/chats/:chatId/image", whatsAppHandler.SendImageMessage)
 			whatsappAPI.POST("/chats/:chatId/video", whatsappMediaHandler.SendVideoMessage)
 			whatsappAPI.POST("/chats/:chatId/file", whatsappMediaHandler.SendFile)
 			whatsappAPI.POST("/chats/:chatId/contact", whatsappMediaHandler.SendContact)
-			whatsappAPI.GET("/media/:mediaId", whatsappHandler.DownloadMedia)
-			
+			whatsappAPI.GET("/media/:mediaId", whatsAppHandler.DownloadMedia)
+
 			// Rota de upload e envio de mídia combinado
 			whatsappAPI.POST("/upload-and-send-media", whatsappMediaHandler.UploadAndSendMedia)
-			
+
 			// Reações
 			whatsappAPI.PUT("/messages/:messageId/reaction", func(c *gin.Context) {
 				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
@@ -682,12 +740,12 @@ func Setup(container *services.Container) *gin.Engine {
 				// Parse pagination parameters
 				limitStr := c.DefaultQuery("limit", "50")
 				offsetStr := c.DefaultQuery("offset", "0")
-				
+
 				limit, err := strconv.Atoi(limitStr)
 				if err != nil {
 					limit = 50
 				}
-				
+
 				offset, err := strconv.Atoi(offsetStr)
 				if err != nil {
 					offset = 0
@@ -795,7 +853,7 @@ func Setup(container *services.Container) *gin.Engine {
 	// Webhooks
 	webhooks := r.Group("/webhooks")
 	{
-		webhooks.POST("/whatsapp", whatsappHandler.WebhookHandler)
+		webhooks.POST("/whatsapp", whatsAppHandler.WebhookHandler)
 	}
 
 	return r

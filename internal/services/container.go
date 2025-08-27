@@ -24,6 +24,7 @@ type Container struct {
 	EmailService          *EmailService
 	ConnectionService     *ConnectionService
 	RespostaRapidaService *RespostaRapidaService
+	FluxoExecutionService *FluxoExecutionService
 }
 
 // NewContainer cria uma nova instância do container de serviços
@@ -50,6 +51,9 @@ func NewContainer(db *gorm.DB, redis *redis.Client, cfg *config.Config) *Contain
 	// Inicializar serviço de respostas rápidas
 	respostaRapidaRepo := repositories.NewRespostaRapidaRepository(db)
 	container.RespostaRapidaService = NewRespostaRapidaService(respostaRapidaRepo, container.WhatsAppService)
+
+	// Inicializar serviço de execução de fluxos
+	container.FluxoExecutionService = NewFluxoExecutionService(db, container.WhatsAppService, container.KanbanService)
 
 	return container
 }

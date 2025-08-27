@@ -29,8 +29,14 @@ func (j *JSONB) Scan(value interface{}) error {
 
 type Tag struct {
 	BaseModel
-	Nome string `gorm:"uniqueIndex;not null" json:"nome"`
-	Cor  string `gorm:"not null" json:"cor"`
+	Nome       string `gorm:"uniqueIndex;not null" json:"nome"`
+	Descricao  string `gorm:"type:text" json:"descricao,omitempty"`
+	Cor        string `gorm:"not null;default:'#3b82f6'" json:"cor"`
+	Categoria  string `gorm:"not null;default:'geral'" json:"categoria"`
+	UsoCount   int    `gorm:"default:0" json:"uso_count"`
+	CriadoPor  string `gorm:"not null" json:"criado_por"`
+	Ativo      bool   `gorm:"default:true" json:"ativo"`
+	Favorito   bool   `gorm:"default:false" json:"favorito"`
 
 	// Relacionamentos
 	Contatos []ContatoTag `gorm:"foreignKey:TagID" json:"contatos,omitempty"`
@@ -146,20 +152,3 @@ func (CardRespostaRapida) TableName() string {
 	return "card_respostas_rapidas"
 }
 
-type AgenteIa struct {
-	BaseModel
-	Nome        string  `gorm:"not null" json:"nome"`
-	Descricao   *string `json:"descricao"`
-	Prompt      string  `gorm:"not null" json:"prompt"`
-	Modelo      string  `gorm:"default:deepseek" json:"modelo"`
-	Ativo       bool    `gorm:"default:true" json:"ativo"`
-	Temperatura float64 `gorm:"default:0.7" json:"temperatura"`
-	MaxTokens   int     `gorm:"default:1000" json:"maxTokens"`
-
-	// Relacionamentos
-	Colunas []Coluna `gorm:"foreignKey:AgenteIaID" json:"colunas,omitempty"`
-}
-
-func (AgenteIa) TableName() string {
-	return "agentes_ia"
-}

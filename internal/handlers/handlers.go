@@ -81,28 +81,181 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 }
 
 func (h *UserHandler) List(c *gin.Context) {
-	// TODO: Implementar listagem de usuários
-	c.JSON(http.StatusOK, gin.H{"message": "Lista de usuários"})
+	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	// Filtros opcionais
+	tipo := c.Query("tipo")
+	status := c.Query("status")
+	search := c.Query("search")
+
+	users, err := h.userService.ListUsers(userID, tipo, status, search)
+	if err != nil {
+		log.Printf("Erro ao listar usuários: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao buscar usuários"})
+		return
+	}
+
+	// Limpar senhas antes de retornar
+	for i := range users {
+		users[i].Senha = ""
+	}
+
+	c.JSON(http.StatusOK, users)
 }
 
 func (h *UserHandler) Create(c *gin.Context) {
-	// TODO: Implementar criação de usuário
-	c.JSON(http.StatusOK, gin.H{"message": "Criação de usuário"})
+	var req struct {
+		Nome     string                `json:"nome" binding:"required"`
+		Email    string                `json:"email" binding:"required,email"`
+		Telefone *string               `json:"telefone"`
+		Tipo     models.TipoUsuario    `json:"tipo" binding:"required"`
+		Senha    string                `json:"senha" binding:"required,min=6"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Verificar se email já existe
+	existingUser, _ := h.userService.GetByEmail(req.Email)
+	if existingUser != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "Email já está em uso"})
+		return
+	}
+
+	usuario := &models.Usuario{
+		Nome:     req.Nome,
+		Email:    req.Email,
+		Telefone: req.Telefone,
+		Tipo:     req.Tipo,
+		Senha:    req.Senha, // TODO: Hash da senha
+		Ativo:    true,
+	}
+
+	if err := h.userService.CreateUserWithDefaults(usuario); err != nil {
+		log.Printf("Erro ao criar usuário: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao criar usuário"})
+		return
+	}
+
+	// Limpar senha antes de retornar
+	usuario.Senha = ""
+	c.JSON(http.StatusCreated, usuario)
 }
 
 func (h *UserHandler) GetByID(c *gin.Context) {
-	// TODO: Implementar busca por ID
-	c.JSON(http.StatusOK, gin.H{"message": "Busca por ID"})
+	userID := c.Param("id")
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID é obrigatório"})
+		return
+	}
+
+	usuario, err := h.userService.GetByID(userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Usuário não encontrado"})
+		return
+	}
+
+	// Buscar estatísticas do usuário
+	stats, _ := h.userService.GetUserStats(userID)
+	usuario.Senha = "" // Limpar senha
+
+	response := map[string]interface{}{
+		"usuario":      usuario,
+		"estatisticas": stats,
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 func (h *UserHandler) Update(c *gin.Context) {
-	// TODO: Implementar atualização
-	c.JSON(http.StatusOK, gin.H{"message": "Atualização"})
+	userID := c.Param("id")
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID é obrigatório"})
+		return
+	}
+
+	var req struct {
+		Nome     *string            `json:"nome"`
+		Email    *string            `json:"email"`
+		Telefone *string            `json:"telefone"`
+		Tipo     *models.TipoUsuario `json:"tipo"`
+		Ativo    *bool              `json:"ativo"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Buscar usuário existente
+	usuario, err := h.userService.GetByID(userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Usuário não encontrado"})
+		return
+	}
+
+	// Atualizar campos se fornecidos
+	if req.Nome != nil {
+		usuario.Nome = *req.Nome
+	}
+	if req.Email != nil {
+		// Verificar se email já existe (excluindo o próprio usuário)
+		existingUser, _ := h.userService.GetByEmail(*req.Email)
+		if existingUser != nil && existingUser.ID != userID {
+			c.JSON(http.StatusConflict, gin.H{"error": "Email já está em uso"})
+			return
+		}
+		usuario.Email = *req.Email
+	}
+	if req.Telefone != nil {
+		usuario.Telefone = req.Telefone
+	}
+	if req.Tipo != nil {
+		usuario.Tipo = *req.Tipo
+	}
+	if req.Ativo != nil {
+		usuario.Ativo = *req.Ativo
+	}
+
+	if err := h.userService.Update(usuario); err != nil {
+		log.Printf("Erro ao atualizar usuário: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao atualizar usuário"})
+		return
+	}
+
+	// Limpar senha antes de retornar
+	usuario.Senha = ""
+	c.JSON(http.StatusOK, usuario)
 }
 
 func (h *UserHandler) Delete(c *gin.Context) {
-	// TODO: Implementar exclusão
-	c.JSON(http.StatusOK, gin.H{"message": "Exclusão"})
+	userID := c.Param("id")
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID é obrigatório"})
+		return
+	}
+
+	// Verificar se usuário existe
+	_, err := h.userService.GetByID(userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Usuário não encontrado"})
+		return
+	}
+
+	// Soft delete - apenas desativar usuário
+	if err := h.userService.DeleteUser(userID); err != nil {
+		log.Printf("Erro ao desativar usuário: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao desativar usuário"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Usuário desativado com sucesso"})
 }
 
 // WhatsAppHandler gerencia WhatsApp
