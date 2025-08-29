@@ -21,12 +21,18 @@ func NewAssinaturasHandler(db *gorm.DB) *AssinaturasHandler {
 
 // ListAssinaturas lista todas as assinaturas do usuário
 func (h *AssinaturasHandler) ListAssinaturas(c *gin.Context) {
-	userID := c.GetString("user_id")
+	// Verificar autenticação
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	userIDStr := userID.(string)
 	contatoJID := c.Query("contato_id")
 	status := c.Query("status")
 
 	var assinaturas []models.Assinatura
-	query := h.db.Where("usuario_id = ?", userID)
+	query := h.db.Where("usuario_id = ?", userIDStr)
 	
 	if contatoJID != "" {
 		// Converter JID para número de telefone e buscar contato

@@ -16,7 +16,19 @@ func NewQuadroHandler(db *gorm.DB) *QuadroHandler {
 }
 
 func (h *QuadroHandler) GetQuadros(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "Lista de quadros"})
+	// Verificar autenticação
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	// TODO: Implementar lógica real de quadros
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Lista de quadros", 
+		"userID": userID,
+		"quadros": []gin.H{},
+	})
 }
 
 func (h *QuadroHandler) CreateQuadro(c *gin.Context) {

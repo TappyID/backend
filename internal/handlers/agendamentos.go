@@ -22,12 +22,17 @@ func NewAgendamentosHandler(db *gorm.DB) *AgendamentosHandler {
 
 // ListAgendamentos lista todos os agendamentos do usuário
 func (h *AgendamentosHandler) ListAgendamentos(c *gin.Context) {
-	userID := c.GetString("user_id")
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	userIDStr := userID.(string)
 	contatoJID := c.Query("contato_id")
 	status := c.Query("status")
 
 	var agendamentos []models.Agendamento
-	query := h.db.Where("usuario_id = ?", userID)
+	query := h.db.Where("usuario_id = ?", userIDStr)
 	
 	if contatoJID != "" {
 		// Converter JID para número de telefone e buscar contato

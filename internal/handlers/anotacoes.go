@@ -22,11 +22,17 @@ func NewAnotacoesHandler(db *gorm.DB) *AnotacoesHandler {
 
 // ListAnotacoes lista todas as anotações do usuário
 func (h *AnotacoesHandler) ListAnotacoes(c *gin.Context) {
-	userID := c.GetString("user_id")
+	// Verificar autenticação
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	userIDStr := userID.(string)
 	contatoJID := c.Query("contato_id")
 
 	var anotacoes []models.Anotacao
-	query := h.db.Where("usuario_id = ?", userID)
+	query := h.db.Where("usuario_id = ?", userIDStr)
 	
 	if contatoJID != "" {
 		// Converter JID para número de telefone e buscar contato
