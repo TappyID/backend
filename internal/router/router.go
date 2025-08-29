@@ -28,7 +28,7 @@ func Setup(container *services.Container) *gin.Engine {
 		"https://crm.tappy.id",
 	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
+	config.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization", "x-api-key"}
 	config.AllowCredentials = true
 	r.Use(cors.New(config))
 
