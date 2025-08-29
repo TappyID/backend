@@ -37,22 +37,27 @@ func Setup(container *services.Container) *gin.Engine {
 	r.Use(gin.Recovery())
 
 	// Inicializar handlers
+	log.Printf("[ROUTER] Inicializando handlers...")
 	authHandler := handlers.NewAuthHandler(container.AuthService)
 	userHandler := handlers.NewUserHandler(container.UserService)
 	contatoHandler := handlers.NewContatosHandler(container.DB)
 	kanbanHandler := handlers.NewKanbanHandler(container.KanbanService)
 	agendamentoHandler := handlers.NewAgendamentosHandler(container.DB)
+	log.Printf("[ROUTER] AgendamentosHandler criado: %v", agendamentoHandler != nil)
 	orcamentoHandler := handlers.NewOrcamentosHandler(container.DB)
 	whatsAppHandler := handlers.NewWhatsAppHandler(container.WhatsAppService)
 	fluxosHandler := handlers.NewFluxosHandler(container.DB, container.FluxoExecutionService)
 	respostaRapidaHandler := handlers.NewRespostaRapidaHandler(container.RespostaRapidaService)
 	connectionHandler := handlers.NewConnectionHandler(container.ConnectionService)
 	anotacoesHandler := handlers.NewAnotacoesHandler(container.DB)
+	log.Printf("[ROUTER] AnotacoesHandler criado: %v", anotacoesHandler != nil)
 	assinaturasHandler := handlers.NewAssinaturasHandler(container.DB)
+	log.Printf("[ROUTER] AssinaturasHandler criado: %v", assinaturasHandler != nil)
 	whatsappMediaHandler := handlers.NewWhatsAppMediaHandler(container.WhatsAppService, container.AuthService)
 	filasHandler := handlers.NewFilasHandler(container.DB)
 	tagsHandler := handlers.NewTagsHandler(container.DB, container.AuthService)
 	alertasHandler := handlers.NewAlertasHandler(container.DB, container.AuthService)
+	log.Printf("[ROUTER] Todos os handlers criados com sucesso")
 
 	// Servir arquivos estáticos (uploads)
 	r.Static("/uploads", "./uploads")
@@ -174,6 +179,7 @@ func Setup(container *services.Container) *gin.Engine {
 		}
 
 		// Anotações
+		log.Printf("[ROUTER] Registrando rotas de anotações...")
 		anotacoes := protected.Group("/anotacoes")
 		{
 			anotacoes.GET("", anotacoesHandler.ListAnotacoes)
@@ -183,8 +189,10 @@ func Setup(container *services.Container) *gin.Engine {
 			anotacoes.DELETE("/:id", anotacoesHandler.DeleteAnotacao)
 			anotacoes.GET("/contato/:contato_id", anotacoesHandler.GetAnotacoesByContato)
 		}
+		log.Printf("[ROUTER] Rotas de anotações registradas")
 
 		// Agendamentos
+		log.Printf("[ROUTER] Registrando rotas de agendamentos...")
 		agendamentos := protected.Group("/agendamentos")
 		{
 			agendamentos.GET("", agendamentoHandler.ListAgendamentos)
@@ -194,6 +202,7 @@ func Setup(container *services.Container) *gin.Engine {
 			agendamentos.DELETE("/:id", agendamentoHandler.DeleteAgendamento)
 			agendamentos.GET("/proximos", agendamentoHandler.GetAgendamentosProximos)
 		}
+		log.Printf("[ROUTER] Rotas de agendamentos registradas")
 
 		// Orçamentos
 		orcamentos := protected.Group("/orcamentos")
@@ -206,6 +215,7 @@ func Setup(container *services.Container) *gin.Engine {
 		}
 
 		// Assinaturas
+		log.Printf("[ROUTER] Registrando rotas de assinaturas...")
 		assinaturas := protected.Group("/assinaturas")
 		{
 			assinaturas.GET("/", assinaturasHandler.ListAssinaturas)
@@ -214,6 +224,7 @@ func Setup(container *services.Container) *gin.Engine {
 			assinaturas.PUT("/:id", assinaturasHandler.UpdateAssinatura)
 			assinaturas.DELETE("/:id", assinaturasHandler.DeleteAssinatura)
 		}
+		log.Printf("[ROUTER] Rotas de assinaturas registradas")
 
 		// Filas
 		filas := protected.Group("/filas")
@@ -856,5 +867,6 @@ func Setup(container *services.Container) *gin.Engine {
 		webhooks.POST("/whatsapp", whatsAppHandler.WebhookHandler)
 	}
 
+	log.Printf("[ROUTER] ✅ Todas as rotas configuradas com sucesso!")
 	return r
 }
