@@ -141,6 +141,8 @@ func Setup(container *services.Container) *gin.Engine {
 			connections.GET("/", func(c *gin.Context) {
 				c.JSON(200, gin.H{"message": "Connections"})
 			})
+			connections.GET("/whatsapp", connectionHandler.GetWhatsAppConnection)
+			connections.POST("/whatsapp", connectionHandler.CreateOrUpdateConnection)
 			connections.POST("/whatsapp/sync/:sessionName", connectionHandler.SyncWhatsAppConnection)
 			connections.DELETE("/whatsapp/:sessionName", connectionHandler.DisconnectWhatsApp)
 		}
