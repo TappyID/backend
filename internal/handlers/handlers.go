@@ -1051,3 +1051,58 @@ func (h *KanbanHandler) ReorderColumns(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Colunas reordenadas com sucesso"})
 }
+
+// ProxyToWAHA faz proxy das requisições do frontend para o WAHA interno
+func (h *WhatsAppHandler) ProxyToWAHA(c *gin.Context) {
+	// Construir URL do WAHA
+	wahaURL := h.whatsappService.GetWAHAURL()
+	targetURL := wahaURL + c.Request.URL.Path
+	
+	// Preservar query parameters
+	if c.Request.URL.RawQuery != "" {
+		targetURL += "?" + c.Request.URL.RawQuery
+	}
+	
+	log.Printf("[PROXY] Proxying %s %s to %s", c.Request.Method, c.Request.URL.Path, targetURL)
+	
+	// Fazer requisição para WAHA
+	client := &http.Client{Timeout: 30 * time.Second}
+	
+	req, err := http.NewRequest(c.Request.Method, targetURL, c.Request.Body)
+	if err != nil {
+		log.Printf("[PROXY] Erro ao criar requisição: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro interno"})
+		return
+	}
+	
+	// Adicionar headers necessários
+	req.Header.Set("X-Api-Key", os.Getenv("WHATSAPP_API_TOKEN"))
+	req.Header.Set("Content-Type", "application/json")
+	
+	// Fazer requisição
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[PROXY] Erro na requisição para WAHA: %v", err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Erro ao conectar com WAHA"})
+		return
+	}
+	defer resp.Body.Close()
+	
+	// Ler resposta
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("[PROXY] Erro ao ler resposta: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro interno"})
+		return
+	}
+	
+	// Copiar headers de resposta
+	for k, v := range resp.Header {
+		if len(v) > 0 {
+			c.Header(k, v[0])
+		}
+	}
+	
+	// Retornar resposta
+	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
+}
