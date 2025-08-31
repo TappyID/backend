@@ -15,6 +15,7 @@ import (
 	"tappyone/internal/services"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // AuthHandler gerencia autenticação
@@ -320,6 +321,11 @@ func (h *WhatsAppHandler) WebhookHandler(c *gin.Context) {
 
 	log.Printf("Webhook recebido: %+v", webhookData)
 
+	// Processar evento de mudança de status da sessão
+	if event, ok := webhookData["event"].(string); ok && event == "session.status" {
+		go h.processSessionStatusChange(webhookData)
+	}
+
 	// Verificar se é uma mensagem de mídia
 	if event, ok := webhookData["event"].(string); ok && event == "message" {
 		if data, ok := webhookData["data"].(map[string]interface{}); ok {
@@ -332,7 +338,83 @@ func (h *WhatsAppHandler) WebhookHandler(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Webhook processado"})
+	c.JSON(http.StatusOK, gin.H{"message": "Webhook processado com sucesso"})
+}
+
+func (h *WhatsAppHandler) processSessionStatusChange(webhookData map[string]interface{}) {
+	// Extrair dados do webhook
+	sessionName, ok := webhookData["session"].(string)
+	if !ok {
+		log.Printf("Erro: nome da sessão não encontrado no webhook")
+		return
+	}
+
+	data, ok := webhookData["data"].(map[string]interface{})
+	if !ok {
+		log.Printf("Erro: dados inválidos no webhook session.status")
+		return
+	}
+
+	newStatus, ok := data["status"].(string)
+	if !ok {
+		log.Printf("Erro: status não encontrado nos dados do webhook")
+		return
+	}
+
+	log.Printf("Mudança de status detectada - Sessão: %s, Novo Status: %s", sessionName, newStatus)
+
+	// Extrair user_id do nome da sessão (formato: user_{uuid})
+	if !strings.HasPrefix(sessionName, "user_") {
+		log.Printf("Erro: formato de sessão inválido: %s", sessionName)
+		return
+	}
+	
+	userID := strings.TrimPrefix(sessionName, "user_")
+	log.Printf("Extraído user_id: %s", userID)
+
+	// Buscar conexão no banco
+	db := h.whatsappService.GetDB()
+	var connection models.UserConnection
+	result := db.Where("user_id = ? AND platform = ?", userID, "whatsapp").First(&connection)
+	
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			log.Printf("Conexão WhatsApp não encontrada para user_id: %s", userID)
+			return
+		}
+		log.Printf("Erro ao buscar conexão: %v", result.Error)
+		return
+	}
+
+	// Mapear status WAHA para nosso formato
+	var ourStatus models.ConnectionStatus
+	switch newStatus {
+	case "WORKING":
+		ourStatus = models.ConnectionStatusConnected
+	case "SCAN_QR_CODE":
+		ourStatus = models.ConnectionStatusConnecting
+	case "FAILED":
+		ourStatus = models.ConnectionStatusError
+	case "STOPPED":
+		ourStatus = models.ConnectionStatusDisconnected
+	default:
+		ourStatus = models.ConnectionStatusConnecting
+	}
+
+	// Atualizar status se mudou
+	if connection.Status != ourStatus {
+		log.Printf("Atualizando status da conexão de '%s' para '%s'", connection.Status, ourStatus)
+		
+		connection.Status = ourStatus
+		if err := db.Save(&connection).Error; err != nil {
+			log.Printf("Erro ao atualizar status da conexão: %v", err)
+			return
+		}
+		
+		log.Printf("Status da conexão WhatsApp atualizado com sucesso para: %s", ourStatus)
+	} else {
+		log.Printf("Status já está atualizado: %s", ourStatus)
+	}
 }
 
 func (h *WhatsAppHandler) processMediaMessage(data map[string]interface{}) {
