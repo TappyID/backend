@@ -642,7 +642,7 @@ func (h *ContatosHandler) GetContatoDadosCompletos(c *gin.Context) {
 		SELECT c.id, c.numero_telefone, c.nome, c.foto_perfil, c.sobre, c.bloqueado,
 		       c.sessao_whatsapp_id, c.email, c.empresa, c.cpf, c.cnpj, c.cep, c.rua,
 		       c.numero, c.bairro, c.cidade, c.estado, c.pais, c.criado_em, c.atualizado_em,
-		       c.contactid
+		       c.contactid, c.status_kanban
 		FROM contatos c
 		INNER JOIN sessoes_whatsapp sw ON c.sessao_whatsapp_id = sw.id
 		WHERE c.contactid = ? AND sw.usuario_id = ?
@@ -704,13 +704,19 @@ func (h *ContatosHandler) GetContatoDadosCompletos(c *gin.Context) {
 		atendente = &atendenteResult
 	}
 
+	// Buscar kanban board do contato
+	var kanbanBoard *string
+	if contato.StatusKanban != nil && *contato.StatusKanban != "" {
+		kanbanBoard = contato.StatusKanban
+	}
+
 	// Montar resposta com dados completos
 	response := gin.H{
 		"id":    contato.ID,
 		"fila":  fila,
 		"tags":  tags,
 		"atendente": atendente,
-		"kanbanBoard": nil, // TODO: Implementar busca de kanban board
+		"kanbanBoard": kanbanBoard,
 		"orcamento": nil,   // TODO: Implementar busca de orçamento
 		"agendamento": nil, // TODO: Implementar busca de agendamento
 	}
