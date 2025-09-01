@@ -257,11 +257,11 @@ func Setup(container *services.Container) *gin.Engine {
 		// Alertas
 		alertas := protected.Group("/alertas")
 		{
-			alertas.GET("", alertasHandler.ListAlertas)
-			alertas.GET("/:id", alertasHandler.GetAlerta)
-			alertas.POST("", alertasHandler.CreateAlerta)
-			alertas.PUT("/:id", alertasHandler.UpdateAlerta)
-			alertas.DELETE("/:id", alertasHandler.DeleteAlerta)
+			alertas.GET("", alertasHandler.ListarAlertas)
+			alertas.GET("/:id", alertasHandler.ObterAlerta)
+			alertas.POST("", alertasHandler.CriarAlerta)
+			alertas.PUT("/:id", alertasHandler.AtualizarAlerta)
+			alertas.DELETE("/:id", alertasHandler.DeletarAlerta)
 		}
 
 		// Estatísticas de Atendimento
