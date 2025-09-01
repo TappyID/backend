@@ -85,9 +85,9 @@ func Load() *Config {
 		JWTExpiresIn: getEnv("JWT_EXPIRES_IN", "7d"),
 
 		// WhatsApp API
-		WhatsAppAPIURL:   getEnv("WAHA_API_URL", "https://server.tappy.id/api"),
+		WhatsAppAPIURL:   getEnv("WAHA_API_URL", "http://159.65.34.199:3001/api"),
 		WhatsAppAPIToken: getEnv("WHATSAPP_API_TOKEN", "tappyone-waha-2024-secretkey"),
-		WebhookURL:       getEnv("WEBHOOK_URL", "https://server.tappy.id/webhooks/whatsapp"),
+		WebhookURL:       getEnv("WEBHOOK_URL", "http://159.65.34.199:3001/webhooks/whatsapp"),
 
 		// Email SMTP
 		SMTPHost: getEnv("SMTP_HOST", "smtp.hostinger.com"),

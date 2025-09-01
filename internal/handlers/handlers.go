@@ -110,11 +110,11 @@ func (h *UserHandler) List(c *gin.Context) {
 
 func (h *UserHandler) Create(c *gin.Context) {
 	var req struct {
-		Nome     string                `json:"nome" binding:"required"`
-		Email    string                `json:"email" binding:"required,email"`
-		Telefone *string               `json:"telefone"`
-		Tipo     models.TipoUsuario    `json:"tipo" binding:"required"`
-		Senha    string                `json:"senha" binding:"required,min=6"`
+		Nome     string             `json:"nome" binding:"required"`
+		Email    string             `json:"email" binding:"required,email"`
+		Telefone *string            `json:"telefone"`
+		Tipo     models.TipoUsuario `json:"tipo" binding:"required"`
+		Senha    string             `json:"senha" binding:"required,min=6"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -182,11 +182,11 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 
 	var req struct {
-		Nome     *string            `json:"nome"`
-		Email    *string            `json:"email"`
-		Telefone *string            `json:"telefone"`
+		Nome     *string             `json:"nome"`
+		Email    *string             `json:"email"`
+		Telefone *string             `json:"telefone"`
 		Tipo     *models.TipoUsuario `json:"tipo"`
-		Ativo    *bool              `json:"ativo"`
+		Ativo    *bool               `json:"ativo"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -368,7 +368,7 @@ func (h *WhatsAppHandler) processSessionStatusChange(webhookData map[string]inte
 		log.Printf("Erro: formato de sessão inválido: %s", sessionName)
 		return
 	}
-	
+
 	userID := strings.TrimPrefix(sessionName, "user_")
 	log.Printf("Extraído user_id: %s", userID)
 
@@ -376,7 +376,7 @@ func (h *WhatsAppHandler) processSessionStatusChange(webhookData map[string]inte
 	db := h.whatsappService.GetDB()
 	var connection models.UserConnection
 	result := db.Where("user_id = ? AND platform = ?", userID, "whatsapp").First(&connection)
-	
+
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			log.Printf("Conexão WhatsApp não encontrada para user_id: %s", userID)
@@ -404,13 +404,13 @@ func (h *WhatsAppHandler) processSessionStatusChange(webhookData map[string]inte
 	// Atualizar status se mudou
 	if connection.Status != ourStatus {
 		log.Printf("Atualizando status da conexão de '%s' para '%s'", connection.Status, ourStatus)
-		
+
 		connection.Status = ourStatus
 		if err := db.Save(&connection).Error; err != nil {
 			log.Printf("Erro ao atualizar status da conexão: %v", err)
 			return
 		}
-		
+
 		log.Printf("Status da conexão WhatsApp atualizado com sucesso para: %s", ourStatus)
 	} else {
 		log.Printf("Status já está atualizado: %s", ourStatus)
@@ -539,7 +539,7 @@ func (h *WhatsAppHandler) saveMediaToDroplet(data []byte, filename, msgType stri
 	}
 
 	// Retornar URL pública
-	publicURL := fmt.Sprintf("https://server.tappy.id/api/files/%s", finalFilename)
+	publicURL := fmt.Sprintf("http://159.65.34.199:3001/api/files/%s", finalFilename)
 	log.Printf("Mídia salva no droplet: %s", publicURL)
 
 	return publicURL, nil
@@ -771,7 +771,7 @@ func saveMediaToDroplet(data []byte, filename string) (string, error) {
 	}
 
 	// Retornar URL pública para acessar o arquivo
-	return fmt.Sprintf("https://server.tappy.id/api/files/%s", uniqueFilename), nil
+	return fmt.Sprintf("http://159.65.34.199:3001/api/files/%s", uniqueFilename), nil
 }
 
 // KanbanHandler gerencia Kanban
@@ -1057,28 +1057,28 @@ func (h *WhatsAppHandler) ProxyToWAHA(c *gin.Context) {
 	// Construir URL do WAHA
 	wahaURL := h.whatsappService.GetWAHAURL()
 	targetURL := wahaURL + c.Request.URL.Path
-	
+
 	// Preservar query parameters
 	if c.Request.URL.RawQuery != "" {
 		targetURL += "?" + c.Request.URL.RawQuery
 	}
-	
+
 	log.Printf("[PROXY] Proxying %s %s to %s", c.Request.Method, c.Request.URL.Path, targetURL)
-	
+
 	// Fazer requisição para WAHA
 	client := &http.Client{Timeout: 30 * time.Second}
-	
+
 	req, err := http.NewRequest(c.Request.Method, targetURL, c.Request.Body)
 	if err != nil {
 		log.Printf("[PROXY] Erro ao criar requisição: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro interno"})
 		return
 	}
-	
+
 	// Adicionar headers necessários
 	req.Header.Set("X-Api-Key", os.Getenv("WHATSAPP_API_TOKEN"))
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	// Fazer requisição
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1087,7 +1087,7 @@ func (h *WhatsAppHandler) ProxyToWAHA(c *gin.Context) {
 		return
 	}
 	defer resp.Body.Close()
-	
+
 	// Ler resposta
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -1095,14 +1095,14 @@ func (h *WhatsAppHandler) ProxyToWAHA(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro interno"})
 		return
 	}
-	
+
 	// Copiar headers de resposta
 	for k, v := range resp.Header {
 		if len(v) > 0 {
 			c.Header(k, v[0])
 		}
 	}
-	
+
 	// Retornar resposta
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
 }

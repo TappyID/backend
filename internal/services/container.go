@@ -46,7 +46,7 @@ func NewContainer(db *gorm.DB, redis *redis.Client, cfg *config.Config) *Contain
 
 	// Inicializar repositórios e serviços de conexão
 	connectionRepo := repositories.NewConnectionRepository(db)
-	container.ConnectionService = NewConnectionService(connectionRepo, "https://server.tappy.id/api", "tappyone-waha-2024-secretkey")
+	container.ConnectionService = NewConnectionService(connectionRepo, "http://159.65.34.199:3001/api", "tappyone-waha-2024-secretkey")
 
 	// Inicializar serviço de respostas rápidas
 	respostaRapidaRepo := repositories.NewRespostaRapidaRepository(db)

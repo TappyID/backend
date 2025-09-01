@@ -133,7 +133,7 @@ func (s *UserService) UpdateUserStatus(userID string, ativo bool) error {
 func (s *UserService) CreateUserWithDefaults(usuario *models.Usuario) error {
 	// Hash da senha antes de salvar
 	// TODO: Implementar hash da senha
-	
+
 	// Definir valores padrão
 	usuario.Ativo = true
 
@@ -478,7 +478,7 @@ func (s *WhatsAppService) SendVoiceMessage(sessionName, chatID string, audioFile
 
 	// Converter para base64
 	base64Audio := base64.StdEncoding.EncodeToString(audioFile)
-	
+
 	log.Printf("[WHATSAPP] SendVoice - Usando base64, tamanho: %d bytes", len(audioFile))
 
 	// Usar base64 diretamente para evitar problemas de autenticação
@@ -1212,29 +1212,29 @@ func (s *WhatsAppService) SendContactVcard(sessionName, chatID, contactID, name 
 	// Fallback para texto formatado
 	log.Printf("[WHATSAPP] SendContactVcard - Using text fallback")
 	endpoint = "/sendText"
-	
+
 	// Limpar o contactID removendo @c.us se existir
 	cleanPhone := contactID
 	if strings.HasSuffix(cleanPhone, "@c.us") {
 		cleanPhone = strings.TrimSuffix(cleanPhone, "@c.us")
 	}
-	
+
 	// Formatar o número brasileiro se possível
 	formattedPhone := cleanPhone
 	if len(cleanPhone) == 13 && strings.HasPrefix(cleanPhone, "55") {
 		// Formato brasileiro: 5518999999999 -> +55 18 99999-9999
-		formattedPhone = fmt.Sprintf("+%s %s %s-%s", 
-			cleanPhone[0:2],   // +55
-			cleanPhone[2:4],   // 18
-			cleanPhone[4:9],   // 99999
-			cleanPhone[9:13])  // 9999
+		formattedPhone = fmt.Sprintf("+%s %s %s-%s",
+			cleanPhone[0:2],  // +55
+			cleanPhone[2:4],  // 18
+			cleanPhone[4:9],  // 99999
+			cleanPhone[9:13]) // 9999
 	} else if len(cleanPhone) >= 10 {
 		// Para outros formatos, apenas adicionar + no início
 		formattedPhone = "+" + cleanPhone
 	}
-	
+
 	contactMessage := fmt.Sprintf("📞 *Contato:*\n*Nome:* %s\n*Telefone:* %s", name, formattedPhone)
-	
+
 	body = map[string]interface{}{
 		"session": sessionName,
 		"chatId":  chatID,
@@ -1286,7 +1286,7 @@ func (s *WhatsAppService) SendLocation(sessionName, chatID string, latitude, lon
 	if err == nil {
 		defer resp.Body.Close()
 		log.Printf("[WHATSAPP] SendLocation - Native endpoint response status: %d", resp.StatusCode)
-		
+
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
 			bodyBytes, err := io.ReadAll(resp.Body)
 			if err == nil {
@@ -1297,7 +1297,7 @@ func (s *WhatsAppService) SendLocation(sessionName, chatID string, latitude, lon
 				}
 			}
 		}
-		
+
 		// Log do erro se status não for 2xx
 		if resp.StatusCode >= 400 {
 			errorBody, _ := io.ReadAll(resp.Body)
@@ -1309,17 +1309,17 @@ func (s *WhatsAppService) SendLocation(sessionName, chatID string, latitude, lon
 	// Fallback para texto formatado
 	log.Printf("[WHATSAPP] SendLocation - Using text fallback")
 	endpoint = "/sendText"
-	
+
 	// Formatar mensagem de localização
 	locationMessage := fmt.Sprintf("📍 *Localização:*\n*%s*\n\nLatitude: %f\nLongitude: %f", title, latitude, longitude)
 	if address != "" && address != title {
 		locationMessage += fmt.Sprintf("\nEndereço: %s", address)
 	}
-	
+
 	// Adicionar link do Google Maps
 	mapsUrl := fmt.Sprintf("https://maps.google.com/maps?q=%f,%f", latitude, longitude)
 	locationMessage += fmt.Sprintf("\n\n🗺️ Ver no mapa: %s", mapsUrl)
-	
+
 	body = map[string]interface{}{
 		"session": sessionName,
 		"chatId":  chatID,
@@ -1513,7 +1513,7 @@ func (s *WhatsAppService) SearchMessages(sessionName, chatID, query string, limi
 
 					// Construir URL da mídia
 					if mediaId, ok := mediaData["id"].(string); ok && mediaId != "" {
-						mediaUrl = fmt.Sprintf("http://localhost:8081/files/%s", mediaId)
+						mediaUrl = fmt.Sprintf("http://159.65.34.199:3001/files/%s", mediaId)
 					}
 				}
 			}
@@ -2351,9 +2351,9 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 func (s *WhatsAppService) SendContact(sessionName, chatID, contactId, contactName string) (interface{}, error) {
 	endpoint := "/sendContactVcard"
 	body := map[string]interface{}{
-		"session": sessionName,
-		"chatId":  chatID,
-		"contactId": contactId,
+		"session":     sessionName,
+		"chatId":      chatID,
+		"contactId":   contactId,
 		"contactName": contactName,
 	}
 
@@ -2389,9 +2389,8 @@ func (s *WhatsAppService) SendContact(sessionName, chatID, contactId, contactNam
 // sendContactAsText envia contato como mensagem de texto (fallback)
 func (s *WhatsAppService) sendContactAsText(sessionName, chatID, contactId, contactName string) (interface{}, error) {
 	log.Printf("[WHATSAPP] SendContact - Using text fallback for contact: %s", contactId)
-	
+
 	text := fmt.Sprintf("📞 *Contato*\n\n*Nome:* %s\n*Telefone:* %s", contactName, contactId)
-	
+
 	return s.SendMessage(sessionName, chatID, text)
 }
-
