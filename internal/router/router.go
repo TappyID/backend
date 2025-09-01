@@ -57,6 +57,7 @@ func Setup(container *services.Container) *gin.Engine {
 	filasHandler := handlers.NewFilasHandler(container.DB)
 	tagsHandler := handlers.NewTagsHandler(container.DB, container.AuthService)
 	alertasHandler := handlers.NewAlertasHandler(container.DB, container.AuthService)
+	atendimentoStatsHandler := handlers.NewAtendimentoStatsHandler(container.WhatsAppService, container.DB)
 	log.Printf("[ROUTER] Todos os handlers criados com sucesso")
 
 	// Servir arquivos estáticos (uploads)
@@ -256,14 +257,17 @@ func Setup(container *services.Container) *gin.Engine {
 		// Alertas
 		alertas := protected.Group("/alertas")
 		{
-			alertas.GET("/", alertasHandler.ListarAlertas)
-			alertas.POST("/", alertasHandler.CriarAlerta)
-			alertas.GET("/stats", alertasHandler.ObterEstatisticasAlertas)
-			alertas.GET("/:id", alertasHandler.ObterAlerta)
-			alertas.PUT("/:id", alertasHandler.AtualizarAlerta)
-			alertas.DELETE("/:id", alertasHandler.DeletarAlerta)
-			alertas.PATCH("/:id/status", alertasHandler.AlternarStatusAlerta)
-			alertas.GET("/:id/historico", alertasHandler.ObterHistoricoAlerta)
+			alertas.GET("", alertasHandler.ListAlertas)
+			alertas.GET("/:id", alertasHandler.GetAlerta)
+			alertas.POST("", alertasHandler.CreateAlerta)
+			alertas.PUT("/:id", alertasHandler.UpdateAlerta)
+			alertas.DELETE("/:id", alertasHandler.DeleteAlerta)
+		}
+
+		// Estatísticas de Atendimento
+		atendimentos := protected.Group("/atendimentos")
+		{
+			atendimentos.GET("/stats", atendimentoStatsHandler.GetStats)
 		}
 
 		// Contatos
