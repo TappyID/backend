@@ -286,6 +286,27 @@ func Setup(container *services.Container) *gin.Engine {
 			contatos.GET("/chat/:chatId/dados-completos", contatoHandler.GetContatoDadosCompletos)
 		}
 
+		// Agentes IA
+		agentesHandler := handlers.NewAgentesHandler(container.DB)
+		agentes := protected.Group("/agentes")
+		{
+			agentes.GET("", agentesHandler.GetAgentes)
+			agentes.POST("", agentesHandler.CreateAgente)
+			agentes.GET("/ativos", agentesHandler.GetAgentesAtivos)
+			agentes.GET("/:id", agentesHandler.GetAgente)
+			agentes.PUT("/:id", agentesHandler.UpdateAgente)
+			agentes.DELETE("/:id", agentesHandler.DeleteAgente)
+			agentes.POST("/:id/toggle", agentesHandler.ToggleAgente)
+		}
+
+		// Chat Agentes
+		chatAgentes := protected.Group("/chat-agentes")
+		{
+			chatAgentes.GET("/:chatId", agentesHandler.GetChatAgente)
+			chatAgentes.POST("/:chatId/activate", agentesHandler.ActivateAgentForChat)
+			chatAgentes.POST("/:chatId/deactivate", agentesHandler.DeactivateAgentForChat)
+		}
+
 		// Fluxos (Automation Workflows)
 		fluxos := protected.Group("/fluxos")
 		{

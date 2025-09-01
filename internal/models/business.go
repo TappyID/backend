@@ -277,6 +277,8 @@ type AgenteIa struct {
 	Descricao   *string    `gorm:"size:1000" json:"descricao"`
 	Prompt      string     `gorm:"not null;type:text" json:"prompt"`
 	Modelo      string     `gorm:"not null;size:100" json:"modelo"` // deepseek, chatgpt, etc
+	Categoria   *string    `gorm:"size:100" json:"categoria"`
+	Funcao      *string    `gorm:"size:500" json:"funcao"`
 	TokensUsados int64     `gorm:"default:0" json:"tokensUsados"`
 	Nicho       *string    `gorm:"size:255" json:"nicho"`
 	Ativo       bool       `gorm:"default:true" json:"ativo"`
@@ -290,6 +292,25 @@ type AgenteIa struct {
 
 func (AgenteIa) TableName() string {
 	return "agentes_ia"
+}
+
+// ChatAgente representa a ativação de um agente para um chat específico
+type ChatAgente struct {
+	ID        string    `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
+	ChatID    string    `gorm:"not null;size:255;index" json:"chatId"` // ID do chat do WAHA
+	AgenteID  string    `gorm:"not null;type:uuid" json:"agenteId"`
+	UsuarioID string    `gorm:"not null;type:uuid" json:"usuarioId"`
+	Ativo     bool      `gorm:"default:true" json:"ativo"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
+
+	// Relacionamentos
+	Agente  AgenteIa `gorm:"foreignKey:AgenteID" json:"agente,omitempty"`
+	Usuario Usuario  `gorm:"foreignKey:UsuarioID" json:"usuario,omitempty"`
+}
+
+func (ChatAgente) TableName() string {
+	return "chat_agentes"
 }
 
 // Contrato representa um contrato digital
