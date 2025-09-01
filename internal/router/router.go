@@ -282,6 +282,8 @@ func Setup(container *services.Container) *gin.Engine {
 			contatos.PUT("/:id", contatoHandler.UpdateContato)
 			contatos.DELETE("/:id", contatoHandler.DeleteContato)
 			contatos.POST("/sync", contatoHandler.SyncContatos)
+			// Buscar dados completos por chatId do WAHA
+			contatos.GET("/chat/:chatId/dados-completos", contatoHandler.GetContatoDadosCompletos)
 		}
 
 		// Fluxos (Automation Workflows)
@@ -621,6 +623,60 @@ func Setup(container *services.Container) *gin.Engine {
 				messageID := c.Param("messageId")
 
 				result, err := container.WhatsAppService.DeleteMessage(sessionName, chatID, messageID)
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, result)
+			})
+
+			// Arquivar chat
+			whatsappAPI.POST("/chats/:chatId/archive", func(c *gin.Context) {
+				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
+				if err != nil {
+					c.JSON(401, gin.H{"error": "Invalid token"})
+					return
+				}
+				sessionName := fmt.Sprintf("user_%s", userID)
+				chatID := c.Param("chatId")
+
+				result, err := container.WhatsAppService.ArchiveChat(sessionName, chatID)
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, result)
+			})
+
+			// Desarquivar chat
+			whatsappAPI.POST("/chats/:chatId/unarchive", func(c *gin.Context) {
+				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
+				if err != nil {
+					c.JSON(401, gin.H{"error": "Invalid token"})
+					return
+				}
+				sessionName := fmt.Sprintf("user_%s", userID)
+				chatID := c.Param("chatId")
+
+				result, err := container.WhatsAppService.UnarchiveChat(sessionName, chatID)
+				if err != nil {
+					c.JSON(500, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, result)
+			})
+
+			// Deletar chat completo
+			whatsappAPI.DELETE("/chats/:chatId", func(c *gin.Context) {
+				userID, err := utils.ValidateJWTFromHeader(c, container.AuthService)
+				if err != nil {
+					c.JSON(401, gin.H{"error": "Invalid token"})
+					return
+				}
+				sessionName := fmt.Sprintf("user_%s", userID)
+				chatID := c.Param("chatId")
+
+				result, err := container.WhatsAppService.DeleteChat(sessionName, chatID)
 				if err != nil {
 					c.JSON(500, gin.H{"error": err.Error()})
 					return

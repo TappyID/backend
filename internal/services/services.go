@@ -2394,3 +2394,99 @@ func (s *WhatsAppService) sendContactAsText(sessionName, chatID, contactId, cont
 
 	return s.SendMessage(sessionName, chatID, text)
 }
+
+// ArchiveChat arquiva um chat
+func (s *WhatsAppService) ArchiveChat(sessionName, chatID string) (interface{}, error) {
+	endpoint := fmt.Sprintf("/%s/chats/%s/archive", sessionName, chatID)
+
+	log.Printf("[WHATSAPP] ArchiveChat - sessionName: %s, chatID: %s", sessionName, chatID)
+	log.Printf("[WHATSAPP] ArchiveChat - endpoint: %s", endpoint)
+
+	resp, err := s.makeWAHARequest("POST", endpoint, "", nil)
+	if err != nil {
+		log.Printf("[WHATSAPP] ArchiveChat - makeWAHARequest error: %v", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	log.Printf("[WHATSAPP] ArchiveChat - WAHA API response status: %d", resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("[WHATSAPP] ArchiveChat - Error response body: %s", string(body))
+		return nil, fmt.Errorf("WAHA API error: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var result interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[WHATSAPP] ArchiveChat - JSON decode error: %v", err)
+		return nil, err
+	}
+
+	log.Printf("[WHATSAPP] ArchiveChat - Success")
+	return result, nil
+}
+
+// UnarchiveChat desarquiva um chat
+func (s *WhatsAppService) UnarchiveChat(sessionName, chatID string) (interface{}, error) {
+	endpoint := fmt.Sprintf("/%s/chats/%s/unarchive", sessionName, chatID)
+
+	log.Printf("[WHATSAPP] UnarchiveChat - sessionName: %s, chatID: %s", sessionName, chatID)
+	log.Printf("[WHATSAPP] UnarchiveChat - endpoint: %s", endpoint)
+
+	resp, err := s.makeWAHARequest("POST", endpoint, "", nil)
+	if err != nil {
+		log.Printf("[WHATSAPP] UnarchiveChat - makeWAHARequest error: %v", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	log.Printf("[WHATSAPP] UnarchiveChat - WAHA API response status: %d", resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("[WHATSAPP] UnarchiveChat - Error response body: %s", string(body))
+		return nil, fmt.Errorf("WAHA API error: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var result interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[WHATSAPP] UnarchiveChat - JSON decode error: %v", err)
+		return nil, err
+	}
+
+	log.Printf("[WHATSAPP] UnarchiveChat - Success")
+	return result, nil
+}
+
+// DeleteChat deleta um chat completo
+func (s *WhatsAppService) DeleteChat(sessionName, chatID string) (interface{}, error) {
+	endpoint := fmt.Sprintf("/%s/chats/%s", sessionName, chatID)
+
+	log.Printf("[WHATSAPP] DeleteChat - sessionName: %s, chatID: %s", sessionName, chatID)
+	log.Printf("[WHATSAPP] DeleteChat - endpoint: %s", endpoint)
+
+	resp, err := s.makeWAHARequest("DELETE", endpoint, "", nil)
+	if err != nil {
+		log.Printf("[WHATSAPP] DeleteChat - makeWAHARequest error: %v", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	log.Printf("[WHATSAPP] DeleteChat - WAHA API response status: %d", resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("[WHATSAPP] DeleteChat - Error response body: %s", string(body))
+		return nil, fmt.Errorf("WAHA API error: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var result interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[WHATSAPP] DeleteChat - JSON decode error: %v", err)
+		return nil, err
+	}
+
+	log.Printf("[WHATSAPP] DeleteChat - Success")
+	return result, nil
+}

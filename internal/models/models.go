@@ -165,6 +165,7 @@ type Contato struct {
 	Sobre            *string `json:"sobre"`
 	Bloqueado        bool    `gorm:"default:false" json:"bloqueado"`
 	SessaoWhatsappID string  `gorm:"not null" json:"sessaoWhatsappId"`
+	ContactID        *string `gorm:"column:contactid;index" json:"contactid"` // ID do contato no WAHA
 	
 	// Campos adicionais do contato
 	Email    *string `json:"email"`
@@ -187,19 +188,55 @@ type Contato struct {
 	Favorito        bool       `gorm:"default:false" json:"favorito"`
 
 	// Relacionamentos
-	SessaoWhatsapp SessaoWhatsApp  `gorm:"foreignKey:SessaoWhatsappID" json:"sessaoWhatsapp,omitempty"`
-	Conversas      []Conversa      `gorm:"foreignKey:ContatoID" json:"conversas,omitempty"`
-	Tags           []ContatoTag    `gorm:"foreignKey:ContatoID" json:"tags,omitempty"`
-	Atendimentos   []Atendimento   `gorm:"foreignKey:ContatoID" json:"atendimentos,omitempty"`
-	Agendamentos   []Agendamento   `gorm:"foreignKey:ContatoID" json:"agendamentos,omitempty"`
-	Orcamentos     []Orcamento     `gorm:"foreignKey:ContatoID" json:"orcamentos,omitempty"`
-	Assinaturas    []Assinatura    `gorm:"foreignKey:ContatoID" json:"assinaturas,omitempty"`
-	Anotacoes      []Anotacao      `gorm:"foreignKey:ContatoID" json:"anotacoes,omitempty"`
-	AvaliacoesNps  []AvaliacaoNps  `gorm:"foreignKey:ContatoID" json:"avaliacoesNps,omitempty"`
+	SessaoWhatsapp SessaoWhatsApp    `gorm:"foreignKey:SessaoWhatsappID" json:"sessaoWhatsapp,omitempty"`
+	Conversas      []Conversa        `gorm:"foreignKey:ContatoID" json:"conversas,omitempty"`
+	Tags           []ContatoTag      `gorm:"foreignKey:ContatoID" json:"tags,omitempty"`
+	Atendimentos   []Atendimento     `gorm:"foreignKey:ContatoID" json:"atendimentos,omitempty"`
+	Agendamentos   []Agendamento     `gorm:"foreignKey:ContatoID" json:"agendamentos,omitempty"`
+	Orcamentos     []Orcamento       `gorm:"foreignKey:ContatoID" json:"orcamentos,omitempty"`
+	Assinaturas    []Assinatura      `gorm:"foreignKey:ContatoID" json:"assinaturas,omitempty"`
+	Anotacoes      []Anotacao        `gorm:"foreignKey:ContatoID" json:"anotacoes,omitempty"`
+	AvaliacoesNps  []AvaliacaoNps    `gorm:"foreignKey:ContatoID" json:"avaliacoesNps,omitempty"`
+	
+	// Relacionamentos de Fila e Atendente
+	FilaContatos       []FilaContato       `gorm:"foreignKey:ContatoID" json:"filaContatos,omitempty"`
+	AtendenteContatos  []AtendenteContato  `gorm:"foreignKey:ContatoID" json:"atendenteContatos,omitempty"`
 }
 
 func (Contato) TableName() string {
 	return "contatos"
+}
+
+// FilaContato - Relacionamento Many-to-Many entre Fila e Contato
+type FilaContato struct {
+	BaseModel
+	FilaID    string  `gorm:"not null" json:"filaId"`
+	ContatoID string  `gorm:"not null" json:"contatoId"`
+	Ativo     bool    `gorm:"default:true" json:"ativo"`
+	
+	// Relacionamentos
+	Fila    Fila    `gorm:"foreignKey:FilaID" json:"fila,omitempty"`
+	Contato Contato `gorm:"foreignKey:ContatoID" json:"contato,omitempty"`
+}
+
+func (FilaContato) TableName() string {
+	return "fila_contatos"
+}
+
+// AtendenteContato - Relacionamento Many-to-Many entre Atendente (User) e Contato
+type AtendenteContato struct {
+	BaseModel
+	UserID    string  `gorm:"not null" json:"userId"`
+	ContatoID string  `gorm:"not null" json:"contatoId"`
+	Ativo     bool    `gorm:"default:true" json:"ativo"`
+	Prioridade int    `gorm:"default:1" json:"prioridade"` // 1=baixa, 2=média, 3=alta
+	
+	// Relacionamentos  
+	Contato Contato `gorm:"foreignKey:ContatoID" json:"contato,omitempty"`
+}
+
+func (AtendenteContato) TableName() string {
+	return "atendente_contatos"
 }
 
 type Conversa struct {

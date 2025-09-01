@@ -625,3 +625,95 @@ func (h *ContatosHandler) SyncContatos(c *gin.Context) {
 		"userID":  userID,
 	})
 }
+
+// GetContatoDadosCompletos busca dados completos do contato pelo chatId do WAHA
+func (h *ContatosHandler) GetContatoDadosCompletos(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	chatId := c.Param("chatId")
+	
+	// Buscar contato pelo contactid (que vem do WAHA)
+	var contato models.Contato
+	query := `
+		SELECT c.id, c.numero_telefone, c.nome, c.foto_perfil, c.sobre, c.bloqueado,
+		       c.sessao_whatsapp_id, c.email, c.empresa, c.cpf, c.cnpj, c.cep, c.rua,
+		       c.numero, c.bairro, c.cidade, c.estado, c.pais, c.criado_em, c.atualizado_em,
+		       c.contactid
+		FROM contatos c
+		INNER JOIN sessoes_whatsapp sw ON c.sessao_whatsapp_id = sw.id
+		WHERE c.contactid = ? AND sw.usuario_id = ?
+	`
+
+	err := h.db.Raw(query, chatId, userID).Scan(&contato).Error
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Contact not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch contact"})
+		return
+	}
+
+	// Buscar fila do contato
+	var fila *models.Fila
+	filaQuery := `
+		SELECT f.id, f.nome, f.cor, f.descricao, f.ativa
+		FROM filas f
+		INNER JOIN fila_contatos fc ON f.id = fc.fila_id
+		WHERE fc.contato_id = ?
+		LIMIT 1
+	`
+	
+	var filaResult models.Fila
+	err = h.db.Raw(filaQuery, contato.ID).Scan(&filaResult).Error
+	if err == nil {
+		fila = &filaResult
+	}
+
+	// Buscar tags do contato
+	var tags []models.Tag
+	tagQuery := `
+		SELECT t.id, t.nome, t.cor
+		FROM tags t
+		INNER JOIN contato_tags ct ON t.id = ct.tag_id
+		WHERE ct.contato_id = ?
+	`
+	
+	err = h.db.Raw(tagQuery, contato.ID).Scan(&tags).Error
+	if err != nil {
+		tags = []models.Tag{}
+	}
+
+	// Buscar atendente do contato
+	var atendente *models.Usuario
+	atendenteQuery := `
+		SELECT u.id, u.nome, u.email
+		FROM usuarios u
+		INNER JOIN atendente_contatos ac ON u.id = ac.user_id
+		WHERE ac.contato_id = ?
+		LIMIT 1
+	`
+	
+	var atendenteResult models.Usuario
+	err = h.db.Raw(atendenteQuery, contato.ID).Scan(&atendenteResult).Error
+	if err == nil {
+		atendente = &atendenteResult
+	}
+
+	// Montar resposta com dados completos
+	response := gin.H{
+		"id":    contato.ID,
+		"fila":  fila,
+		"tags":  tags,
+		"atendente": atendente,
+		"kanbanBoard": nil, // TODO: Implementar busca de kanban board
+		"orcamento": nil,   // TODO: Implementar busca de orçamento
+		"agendamento": nil, // TODO: Implementar busca de agendamento
+	}
+
+	c.JSON(http.StatusOK, response)
+}
