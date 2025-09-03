@@ -87,66 +87,42 @@ func (s *RespostaRapidaService) DeleteCategoria(id uuid.UUID) error {
 // ===== RESPOSTAS RÁPIDAS =====
 
 func (s *RespostaRapidaService) CreateRespostaRapida(req *CreateRespostaRapidaRequest) (*models.RespostaRapida, error) {
-	// Se categoria_id não foi fornecida, buscar ou criar categoria "Geral"
-	var categoriaID uuid.UUID
-	var categoriaIDDefinida bool = false
-	if req.CategoriaID != nil {
-		// Verificar se a categoria existe antes de usar
-		categorias, err := s.repo.GetCategoriasByUsuario(req.UsuarioID)
-		if err != nil {
-			return nil, fmt.Errorf("erro ao buscar categorias: %w", err)
-		}
-		
-		categoriaEncontrada := false
-		for _, categoria := range categorias {
-			if categoria.ID == *req.CategoriaID {
-				categoriaEncontrada = true
-				break
-			}
-		}
-		
-		if categoriaEncontrada {
-			categoriaID = *req.CategoriaID
-			categoriaIDDefinida = true
-		} else {
-			// Categoria não existe, usar lógica padrão para criar categoria "Geral"
-			req.CategoriaID = nil
+	// SEMPRE buscar ou criar categoria "Geral"  
+	categorias, err := s.repo.GetCategoriasByUsuario(req.UsuarioID)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao buscar categorias: %w", err)
+	}
+	
+	var categoriaGeral *models.CategoriaResposta
+	
+	// Procurar categoria "Geral" existente
+	for _, categoria := range categorias {
+		if categoria.Nome == "Geral" {
+			categoriaGeral = &categoria
+			break
 		}
 	}
 	
-	if req.CategoriaID == nil {
-		// Buscar categoria "Geral" por nome ou criar se não existir
-		categorias, err := s.repo.GetCategoriasByUsuario(req.UsuarioID)
-		var categoriaGeral *models.CategoriaResposta
-		
-		// Procurar categoria "Geral" existente
-		for _, categoria := range categorias {
-			if categoria.Nome == "Geral" {
-				categoriaGeral = &categoria
-				break
-			}
+	// Se não encontrou, criar categoria "Geral"
+	if categoriaGeral == nil {
+		descricao := "Categoria geral para respostas"
+		categoriaGeral = &models.CategoriaResposta{
+			Nome:      "Geral",
+			Descricao: &descricao,
+			Cor:       "#3b82f6",
+			Icone:     "MessageCircle",
+			UsuarioID: req.UsuarioID,
+			Ativo:     true,
+			Ordem:     0,
 		}
-		
-		// Se não encontrou, criar categoria "Geral"
-		if categoriaGeral == nil {
-			descricao := "Categoria geral para respostas"
-			categoriaGeral = &models.CategoriaResposta{
-				Nome:      "Geral",
-				Descricao: &descricao,
-				Cor:       "#3b82f6",
-				Icone:     "MessageCircle",
-				UsuarioID: req.UsuarioID,
-				Ativo:     true,
-				Ordem:     0,
-			}
-			err = s.repo.CreateCategoria(categoriaGeral)
-			if err != nil {
-				return nil, fmt.Errorf("erro ao criar categoria geral: %w", err)
-			}
+		err = s.repo.CreateCategoria(categoriaGeral)
+		if err != nil {
+			return nil, fmt.Errorf("erro ao criar categoria geral: %w", err)
 		}
-		categoriaID = categoriaGeral.ID
-		categoriaIDDefinida = true
 	}
+	
+	// SEMPRE usar categoria "Geral" - ignorar req.CategoriaID temporariamente
+	categoriaID := categoriaGeral.ID
 
 	resposta := &models.RespostaRapida{
 		Titulo:                    req.Titulo,
@@ -182,33 +158,28 @@ func (s *RespostaRapidaService) CreateRespostaRapida(req *CreateRespostaRapidaRe
 		}
 	}
 
-	err := s.repo.CreateRespostaRapida(resposta)
+	err = s.repo.CreateRespostaRapida(resposta)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao criar resposta rápida: %w", err)
 	}
 
 	// Criar ações se fornecidas
-	if req.Acoes != nil && len(req.Acoes) > 0 {
-		for i, acaoReq := range req.Acoes {
-			acao := &models.AcaoResposta{
-				RespostaRapidaID: resposta.ID,
-				Tipo:             acaoReq.Tipo,
-				Ordem:            i,
-				DelaySegundos:    acaoReq.DelaySegundos,
-				Obrigatorio:      acaoReq.Obrigatorio,
-				Condicional:      acaoReq.Condicional,
-				Ativo:            true,
+	if len(req.Acoes) > 0 {
+		acoes := make([]map[string]interface{}, len(req.Acoes))
+		for i, acao := range req.Acoes {
+			acoes[i] = map[string]interface{}{
+				"tipo":          acao.Tipo,
+				"conteudo":      acao.Conteudo,
+				"ordem":         acao.Ordem,
+				"ativo":         acao.Ativo,
+				"delay_segundos": acao.DelaySegundos,
+				"obrigatorio":   acao.Obrigatorio,
+				"condicional":   acao.Condicional,
 			}
-
-			err := acao.SetConteudo(acaoReq.Conteudo)
-			if err != nil {
-				return nil, fmt.Errorf("erro ao serializar conteúdo da ação: %w", err)
-			}
-
-			err = s.repo.CreateAcao(acao)
-			if err != nil {
-				return nil, fmt.Errorf("erro ao criar ação: %w", err)
-			}
+		}
+		err = s.repo.UpdateRespostaRapidaAcoes(resposta.ID, acoes)
+		if err != nil {
+			return nil, fmt.Errorf("erro ao criar ações: %w", err)
 		}
 	}
 
