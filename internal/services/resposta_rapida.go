@@ -89,6 +89,7 @@ func (s *RespostaRapidaService) DeleteCategoria(id uuid.UUID) error {
 func (s *RespostaRapidaService) CreateRespostaRapida(req *CreateRespostaRapidaRequest) (*models.RespostaRapida, error) {
 	// Se categoria_id não foi fornecida, buscar ou criar categoria "Geral"
 	var categoriaID uuid.UUID
+	var categoriaIDDefinida bool = false
 	if req.CategoriaID != nil {
 		// Verificar se a categoria existe antes de usar
 		categorias, err := s.repo.GetCategoriasByUsuario(req.UsuarioID)
@@ -106,6 +107,7 @@ func (s *RespostaRapidaService) CreateRespostaRapida(req *CreateRespostaRapidaRe
 		
 		if categoriaEncontrada {
 			categoriaID = *req.CategoriaID
+			categoriaIDDefinida = true
 		} else {
 			// Categoria não existe, usar lógica padrão para criar categoria "Geral"
 			req.CategoriaID = nil
@@ -143,6 +145,7 @@ func (s *RespostaRapidaService) CreateRespostaRapida(req *CreateRespostaRapidaRe
 			}
 		}
 		categoriaID = categoriaGeral.ID
+		categoriaIDDefinida = true
 	}
 
 	resposta := &models.RespostaRapida{
