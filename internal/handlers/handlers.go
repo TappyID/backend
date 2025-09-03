@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	"tappyone/internal/models"
 	"tappyone/internal/services"
 
@@ -129,12 +130,20 @@ func (h *UserHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// Hash da senha
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Senha), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("Erro ao gerar hash da senha: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao processar senha"})
+		return
+	}
+
 	usuario := &models.Usuario{
 		Nome:     req.Nome,
 		Email:    req.Email,
 		Telefone: req.Telefone,
 		Tipo:     req.Tipo,
-		Senha:    req.Senha, // TODO: Hash da senha
+		Senha:    string(hashedPassword),
 		Ativo:    true,
 	}
 
