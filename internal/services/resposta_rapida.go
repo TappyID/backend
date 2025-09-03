@@ -90,8 +90,29 @@ func (s *RespostaRapidaService) CreateRespostaRapida(req *CreateRespostaRapidaRe
 	// Se categoria_id não foi fornecida, buscar ou criar categoria "Geral"
 	var categoriaID uuid.UUID
 	if req.CategoriaID != nil {
-		categoriaID = *req.CategoriaID
-	} else {
+		// Verificar se a categoria existe antes de usar
+		categorias, err := s.repo.GetCategoriasByUsuario(req.UsuarioID)
+		if err != nil {
+			return nil, fmt.Errorf("erro ao buscar categorias: %w", err)
+		}
+		
+		categoriaEncontrada := false
+		for _, categoria := range categorias {
+			if categoria.ID == *req.CategoriaID {
+				categoriaEncontrada = true
+				break
+			}
+		}
+		
+		if categoriaEncontrada {
+			categoriaID = *req.CategoriaID
+		} else {
+			// Categoria não existe, usar lógica padrão para criar categoria "Geral"
+			req.CategoriaID = nil
+		}
+	}
+	
+	if req.CategoriaID == nil {
 		// Buscar categoria "Geral" por nome ou criar se não existir
 		categorias, err := s.repo.GetCategoriasByUsuario(req.UsuarioID)
 		var categoriaGeral *models.CategoriaResposta
