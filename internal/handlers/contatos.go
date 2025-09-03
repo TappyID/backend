@@ -732,7 +732,7 @@ func (h *ContatosHandler) AssociarTagsContato(c *gin.Context) {
 		return
 	}
 
-	contatoId := c.Param("id")
+	contatoParam := c.Param("id")
 	
 	var req struct {
 		TagIds []string `json:"tagIds" binding:"required"`
@@ -743,20 +743,34 @@ func (h *ContatosHandler) AssociarTagsContato(c *gin.Context) {
 		return
 	}
 
-	// Verificar se o contato existe e pertence ao usuário
-	var count int64
-	query := `
-		SELECT COUNT(*)
-		FROM contatos c
-		INNER JOIN sessoes_whatsapp sw ON c.sessao_whatsapp_id = sw.id
-		WHERE c.id = ? AND sw.usuario_id = ?
-	`
+	// Buscar contato pelo ID interno ou chatId (contactid)
+	var contato models.Contato
+	var query string
+	if strings.Contains(contatoParam, "@") {
+		// É um chatId do WhatsApp (formato: 5518997200106@c.us)
+		query = `
+			SELECT c.id, c.numero_telefone, c.nome, c.contactid
+			FROM contatos c
+			INNER JOIN sessoes_whatsapp sw ON c.sessao_whatsapp_id = sw.id
+			WHERE c.contactid = ? AND sw.usuario_id = ?
+		`
+	} else {
+		// É um ID interno
+		query = `
+			SELECT c.id, c.numero_telefone, c.nome, c.contactid
+			FROM contatos c
+			INNER JOIN sessoes_whatsapp sw ON c.sessao_whatsapp_id = sw.id
+			WHERE c.id = ? AND sw.usuario_id = ?
+		`
+	}
 	
-	err := h.db.Raw(query, contatoId, userID).Scan(&count).Error
-	if err != nil || count == 0 {
+	err := h.db.Raw(query, contatoParam, userID).Scan(&contato).Error
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Contato não encontrado"})
 		return
 	}
+	
+	contatoId := contato.ID
 
 	// Remover tags existentes do contato
 	if err := h.db.Where("contato_id = ?", contatoId).Delete(&models.ContatoTag{}).Error; err != nil {
@@ -819,22 +833,36 @@ func (h *ContatosHandler) ListarTagsContato(c *gin.Context) {
 		return
 	}
 
-	contatoId := c.Param("id")
+	contatoParam := c.Param("id")
 
-	// Verificar se o contato existe e pertence ao usuário
-	var count int64
-	query := `
-		SELECT COUNT(*)
-		FROM contatos c
-		INNER JOIN sessoes_whatsapp sw ON c.sessao_whatsapp_id = sw.id
-		WHERE c.id = ? AND sw.usuario_id = ?
-	`
+	// Buscar contato pelo ID interno ou chatId (contactid)
+	var contato models.Contato
+	var query string
+	if strings.Contains(contatoParam, "@") {
+		// É um chatId do WhatsApp (formato: 5518997200106@c.us)
+		query = `
+			SELECT c.id, c.numero_telefone, c.nome, c.contactid
+			FROM contatos c
+			INNER JOIN sessoes_whatsapp sw ON c.sessao_whatsapp_id = sw.id
+			WHERE c.contactid = ? AND sw.usuario_id = ?
+		`
+	} else {
+		// É um ID interno
+		query = `
+			SELECT c.id, c.numero_telefone, c.nome, c.contactid
+			FROM contatos c
+			INNER JOIN sessoes_whatsapp sw ON c.sessao_whatsapp_id = sw.id
+			WHERE c.id = ? AND sw.usuario_id = ?
+		`
+	}
 	
-	err := h.db.Raw(query, contatoId, userID).Scan(&count).Error
-	if err != nil || count == 0 {
+	err := h.db.Raw(query, contatoParam, userID).Scan(&contato).Error
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Contato não encontrado"})
 		return
 	}
+	
+	contatoId := contato.ID
 
 	// Buscar tags do contato
 	var tags []models.Tag
