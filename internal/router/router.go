@@ -284,6 +284,9 @@ func Setup(container *services.Container) *gin.Engine {
 			contatos.POST("/sync", contatoHandler.SyncContatos)
 			// Buscar dados completos por chatId do WAHA
 			contatos.GET("/chat/:chatId/dados-completos", contatoHandler.GetContatoDadosCompletos)
+			// Tags do contato
+			contatos.GET("/:id/tags", contatoHandler.ListarTagsContato)
+			contatos.POST("/:id/tags", contatoHandler.AssociarTagsContato)
 		}
 
 		// Agentes IA

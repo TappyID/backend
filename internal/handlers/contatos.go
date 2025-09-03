@@ -723,3 +723,137 @@ func (h *ContatosHandler) GetContatoDadosCompletos(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
+
+// AssociarTagsContato - POST /api/contatos/:id/tags
+func (h *ContatosHandler) AssociarTagsContato(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	contatoId := c.Param("id")
+	
+	var req struct {
+		TagIds []string `json:"tagIds" binding:"required"`
+	}
+	
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dados inválidos", "details": err.Error()})
+		return
+	}
+
+	// Verificar se o contato existe e pertence ao usuário
+	var count int64
+	query := `
+		SELECT COUNT(*)
+		FROM contatos c
+		INNER JOIN sessoes_whatsapp sw ON c.sessao_whatsapp_id = sw.id
+		WHERE c.id = ? AND sw.usuario_id = ?
+	`
+	
+	err := h.db.Raw(query, contatoId, userID).Scan(&count).Error
+	if err != nil || count == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Contato não encontrado"})
+		return
+	}
+
+	// Remover tags existentes do contato
+	if err := h.db.Where("contato_id = ?", contatoId).Delete(&models.ContatoTag{}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao remover tags existentes"})
+		return
+	}
+
+	// Adicionar novas tags
+	var contatoTags []models.ContatoTag
+	for _, tagId := range req.TagIds {
+		// Verificar se a tag existe
+		var tag models.Tag
+		if err := h.db.First(&tag, "id = ?", tagId).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Tag não encontrada: " + tagId})
+			return
+		}
+
+		contatoTag := models.ContatoTag{
+			ContatoID: contatoId,
+			TagID:     tagId,
+		}
+		contatoTags = append(contatoTags, contatoTag)
+	}
+
+	// Salvar associações em lote
+	if len(contatoTags) > 0 {
+		if err := h.db.Create(&contatoTags).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao salvar tags", "details": err.Error()})
+			return
+		}
+	}
+
+	// Retornar tags atualizadas do contato
+	var tagsAtualizadas []models.Tag
+	tagQuery := `
+		SELECT t.id, t.nome, t.cor, t.descricao, t.favorito
+		FROM tags t
+		INNER JOIN contato_tags ct ON t.id = ct.tag_id
+		WHERE ct.contato_id = ?
+		ORDER BY t.nome ASC
+	`
+	
+	err = h.db.Raw(tagQuery, contatoId).Scan(&tagsAtualizadas).Error
+	if err != nil {
+		tagsAtualizadas = []models.Tag{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Tags associadas com sucesso",
+		"data":    tagsAtualizadas,
+	})
+}
+
+// ListarTagsContato - GET /api/contatos/:id/tags
+func (h *ContatosHandler) ListarTagsContato(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	contatoId := c.Param("id")
+
+	// Verificar se o contato existe e pertence ao usuário
+	var count int64
+	query := `
+		SELECT COUNT(*)
+		FROM contatos c
+		INNER JOIN sessoes_whatsapp sw ON c.sessao_whatsapp_id = sw.id
+		WHERE c.id = ? AND sw.usuario_id = ?
+	`
+	
+	err := h.db.Raw(query, contatoId, userID).Scan(&count).Error
+	if err != nil || count == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Contato não encontrado"})
+		return
+	}
+
+	// Buscar tags do contato
+	var tags []models.Tag
+	tagQuery := `
+		SELECT t.id, t.nome, t.cor, t.descricao, t.favorito
+		FROM tags t
+		INNER JOIN contato_tags ct ON t.id = ct.tag_id
+		WHERE ct.contato_id = ?
+		ORDER BY t.nome ASC
+	`
+	
+	err = h.db.Raw(tagQuery, contatoId).Scan(&tags).Error
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao buscar tags do contato"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    tags,
+	})
+}
