@@ -89,11 +89,7 @@ func (h *ContatosHandler) ListContatos(c *gin.Context) {
 	// Para cada contato, buscar tags
 	for i := range contatos {
 		var tags []models.ContatoTag
-		err := h.db.Table("contato_tags ct").
-			Select("ct.id, ct.contato_id, ct.tag_id, t.id as \"tag.id\", t.nome as \"tag.nome\", t.cor as \"tag.cor\"").
-			Joins("INNER JOIN tags t ON ct.tag_id = t.id").
-			Where("ct.contato_id = ?", contatos[i].ID).
-			Scan(&tags).Error
+		err := h.db.Preload("Tag").Where("contato_id = ?", contatos[i].ID).Find(&tags).Error
 
 		if err == nil {
 			contatos[i].Tags = tags
@@ -135,11 +131,7 @@ func (h *ContatosHandler) GetContato(c *gin.Context) {
 
 	// Buscar tags do contato
 	var tags []models.ContatoTag
-	err = h.db.Table("contato_tags ct").
-		Select("ct.id, ct.contato_id, ct.tag_id, t.id as 'tag.id', t.nome as 'tag.nome', t.cor as 'tag.cor'").
-		Joins("INNER JOIN tags t ON ct.tag_id = t.id").
-		Where("ct.contato_id = ?", contato.ID).
-		Scan(&tags).Error
+	err = h.db.Preload("Tag").Where("contato_id = ?", contato.ID).Find(&tags).Error
 
 	if err == nil {
 		contato.Tags = tags
