@@ -1,6 +1,18 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: tappyone
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   backend:
     build: .
     image: backend-backend
@@ -8,6 +20,14 @@ services:
       - "8081:8081"
     volumes:
       - ./uploads:/app/uploads
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=tappyone
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+    depends_on:
+      - postgres
     restart: unless-stopped
     command: "./main"
 
@@ -18,3 +38,6 @@ services:
     environment:
       - WAHA_WEBHOOK_URL=http://159.65.34.199:8081/api/webhook/whatsapp
     restart: unless-stopped
+
+volumes:
+  postgres_data:
