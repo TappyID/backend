@@ -140,9 +140,9 @@ func (s *UserService) CreateUserWithDefaults(usuario *models.Usuario) error {
 	return s.db.Create(usuario).Error
 }
 
-// DeleteUser desativa usuário (soft delete)
+// DeleteUser remove usuário permanentemente (hard delete)
 func (s *UserService) DeleteUser(userID string) error {
-	return s.db.Model(&models.Usuario{}).Where("id = ?", userID).Update("ativo", false).Error
+	return s.db.Where("id = ?", userID).Delete(&models.Usuario{}).Error
 }
 
 // GetUsersByType retorna usuários por tipo
