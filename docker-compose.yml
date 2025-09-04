@@ -21,6 +21,7 @@ services:
     volumes:
       - ./uploads:/app/uploads
     environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/tappyone?sslmode=disable
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=tappyone
