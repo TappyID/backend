@@ -772,13 +772,7 @@ func (h *ContatosHandler) AssociarTagsContato(c *gin.Context) {
 	
 	contatoId := contato.ID
 
-	// Remover tags existentes do contato
-	if err := h.db.Where("contato_id = ?", contatoId).Delete(&models.ContatoTag{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao remover tags existentes"})
-		return
-	}
-
-	// Adicionar novas tags
+	// Adicionar apenas novas tags (sem remover as existentes)
 	var contatoTags []models.ContatoTag
 	for _, tagId := range req.TagIds {
 		// Verificar se a tag existe
@@ -788,11 +782,18 @@ func (h *ContatosHandler) AssociarTagsContato(c *gin.Context) {
 			return
 		}
 
-		contatoTag := models.ContatoTag{
-			ContatoID: contatoId,
-			TagID:     tagId,
+		// Verificar se a associação já existe
+		var existingAssociation models.ContatoTag
+		err := h.db.Where("contato_id = ? AND tag_id = ?", contatoId, tagId).First(&existingAssociation).Error
+		
+		// Se não existe, adicionar à lista para criar
+		if err != nil {
+			contatoTag := models.ContatoTag{
+				ContatoID: contatoId,
+				TagID:     tagId,
+			}
+			contatoTags = append(contatoTags, contatoTag)
 		}
-		contatoTags = append(contatoTags, contatoTag)
 	}
 
 	// Salvar associações em lote
