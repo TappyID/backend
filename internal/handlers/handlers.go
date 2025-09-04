@@ -278,8 +278,40 @@ func NewWhatsAppHandler(whatsappService *services.WhatsAppService) *WhatsAppHand
 }
 
 func (h *WhatsAppHandler) CreateSession(c *gin.Context) {
-	// TODO: Implementar criação de sessão
-	c.JSON(http.StatusOK, gin.H{"message": "Criação de sessão WhatsApp"})
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	var req struct {
+		NomeSessao string `json:"nomeSessao" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("[WHATSAPP] Error parsing request: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("[WHATSAPP] Creating session %s for user %s", req.NomeSessao, userID)
+
+	// Criar sessão no banco
+	session := &models.SessaoWhatsApp{
+		NomeSessao: req.NomeSessao,
+		Status:     models.StatusSessaoDesconectado,
+		Ativo:      true,
+		UsuarioID:  userID.(string),
+	}
+
+	if err := h.whatsappService.CreateSession(session); err != nil {
+		log.Printf("[WHATSAPP] Error creating session in DB: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+		return
+	}
+
+	log.Printf("[WHATSAPP] Session created successfully with ID: %s", session.ID)
+	c.JSON(http.StatusCreated, session)
 }
 
 func (h *WhatsAppHandler) ListSessions(c *gin.Context) {
@@ -316,8 +348,78 @@ func (h *WhatsAppHandler) StopSession(c *gin.Context) {
 }
 
 func (h *WhatsAppHandler) GetQRCode(c *gin.Context) {
-	// TODO: Implementar obtenção de QR Code
-	c.JSON(http.StatusOK, gin.H{"message": "QR Code WhatsApp"})
+	sessionID := c.Param("id")
+	if sessionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Session ID is required"})
+		return
+	}
+
+	// Obter configuração do WAHA
+	wahaURL := os.Getenv("WAHA_URL")
+	if wahaURL == "" {
+		wahaURL = "http://159.65.34.199:3001"
+	}
+	wahaAPIKey := os.Getenv("WAHA_API_KEY")
+	if wahaAPIKey == "" {
+		wahaAPIKey = "tappyone-waha-2024-secretkey"
+	}
+
+	// Tentar diferentes endpoints para obter QR code
+	endpoints := []string{
+		fmt.Sprintf("%s/api/sessions/%s/auth/qr?format=image", wahaURL, sessionID),
+		fmt.Sprintf("%s/api/sessions/%s/qr?format=image", wahaURL, sessionID),
+		fmt.Sprintf("%s/api/sessions/%s/qr", wahaURL, sessionID),
+		fmt.Sprintf("%s/api/sessions/%s/screenshot", wahaURL, sessionID),
+	}
+
+	for _, endpoint := range endpoints {
+		log.Printf("[QR] Tentando endpoint: %s", endpoint)
+		
+		req, err := http.NewRequest("GET", endpoint, nil)
+		if err != nil {
+			log.Printf("[QR] Erro ao criar request: %v", err)
+			continue
+		}
+
+		req.Header.Set("X-Api-Key", wahaAPIKey)
+		req.Header.Set("Accept", "image/png")
+
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("[QR] Erro ao fazer request: %v", err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			// QR code encontrado, retornar como imagem
+			c.Header("Content-Type", "image/png")
+			c.Header("Cache-Control", "no-cache")
+			
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				log.Printf("[QR] Erro ao ler response body: %v", err)
+				continue
+			}
+
+			if len(body) > 0 {
+				log.Printf("[QR] QR code obtido via: %s", endpoint)
+				c.Data(http.StatusOK, "image/png", body)
+				return
+			}
+		} else {
+			log.Printf("[QR] Endpoint %s retornou: %d", endpoint, resp.StatusCode)
+		}
+	}
+
+	// Se chegou aqui, nenhum endpoint funcionou
+	log.Printf("[QR] Nenhum endpoint de QR code funcionou para sessão: %s", sessionID)
+	c.JSON(http.StatusNotFound, gin.H{
+		"error": "QR Code não encontrado. Verifique se a sessão está no estado SCAN_QR_CODE",
+		"session": sessionID,
+		"available_in_logs": "docker logs backend-waha-1",
+	})
 }
 
 func (h *WhatsAppHandler) WebhookHandler(c *gin.Context) {

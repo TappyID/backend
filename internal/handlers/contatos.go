@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -148,11 +149,19 @@ func (h *ContatosHandler) CreateContato(c *gin.Context) {
 		return
 	}
 
+	// Log do body bruto para debug
+	log.Printf("[CONTATOS] Raw request body received")
+	
 	var req CreateContatoRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("[CONTATOS] Error parsing JSON: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Log dos dados parseados
+	log.Printf("[CONTATOS] Parsed request: NumeroTelefone=%s, Nome=%v, SessaoWhatsappID=%s", 
+		req.NumeroTelefone, req.Nome, req.SessaoWhatsappID)
 
 	// Verificar se a sessão WhatsApp pertence ao usuário
 	var sessaoCount int64
