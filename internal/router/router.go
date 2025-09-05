@@ -58,6 +58,7 @@ func Setup(container *services.Container) *gin.Engine {
 	tagsHandler := handlers.NewTagsHandler(container.DB, container.AuthService)
 	alertasHandler := handlers.NewAlertasHandler(container.DB, container.AuthService)
 	atendimentoStatsHandler := handlers.NewAtendimentoStatsHandler(container.WhatsAppService, container.DB)
+	sessoesWhatsAppHandler := handlers.NewSessoesWhatsAppHandler(container.DB)
 	log.Printf("[ROUTER] Todos os handlers criados com sucesso")
 
 	// Servir arquivos estáticos (uploads)
@@ -287,6 +288,16 @@ func Setup(container *services.Container) *gin.Engine {
 			// Tags do contato
 			contatos.GET("/:id/tags", contatoHandler.ListarTagsContato)
 			contatos.POST("/:id/tags", contatoHandler.AssociarTagsContato)
+		}
+
+		// Sessões WhatsApp
+		sessoesWhatsApp := protected.Group("/sessoes-whatsapp")
+		{
+			sessoesWhatsApp.GET("", sessoesWhatsAppHandler.ListSessoesWhatsApp)
+			sessoesWhatsApp.GET("/:id", sessoesWhatsAppHandler.GetSessaoWhatsApp)
+			sessoesWhatsApp.POST("", sessoesWhatsAppHandler.CreateSessaoWhatsApp)
+			sessoesWhatsApp.PUT("/:id", sessoesWhatsAppHandler.UpdateSessaoWhatsApp)
+			sessoesWhatsApp.DELETE("/:id", sessoesWhatsAppHandler.DeleteSessaoWhatsApp)
 		}
 
 		// Agentes IA

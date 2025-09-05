@@ -5,9 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"tappyone/internal/models"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
-	"tappyone/internal/models"
 )
 
 // OrcamentosHandler gerencia os orçamentos
@@ -27,11 +28,11 @@ func (h *OrcamentosHandler) ListOrcamentos(c *gin.Context) {
 
 	var orcamentos []models.Orcamento
 	query := h.db.Where("usuario_id = ?", userID).Preload("Itens")
-	
+
 	if contatoJID != "" {
 		// Converter JID para número de telefone e buscar contato
 		numeroTelefone := strings.Replace(contatoJID, "@c.us", "", 1)
-		
+
 		// Buscar contato pelo número de telefone
 		var contato models.Contato
 		if err := h.db.Where("numero_telefone = ?", numeroTelefone).First(&contato).Error; err == nil {
@@ -43,11 +44,11 @@ func (h *OrcamentosHandler) ListOrcamentos(c *gin.Context) {
 			return
 		}
 	}
-	
+
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
-	
+
 	if err := query.Order("data DESC").Find(&orcamentos).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao buscar orçamentos"})
 		return
@@ -76,12 +77,12 @@ func (h *OrcamentosHandler) CreateOrcamento(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var req struct {
-		Titulo     string                  `json:"titulo" binding:"required"`
-		Data       time.Time               `json:"data" binding:"required"`
-		Tipo       string                  `json:"tipo" binding:"required"`
-		Observacao *string                 `json:"observacao"`
-		ContatoID  string                  `json:"contato_id" binding:"required"`
-		Itens      []models.OrcamentoItem  `json:"itens"`
+		Titulo     string                 `json:"titulo" binding:"required"`
+		Data       time.Time              `json:"data" binding:"required"`
+		Tipo       string                 `json:"tipo" binding:"required"`
+		Observacao *string                `json:"observacao"`
+		ContatoID  string                 `json:"contato_id" binding:"required"`
+		Itens      []models.OrcamentoItem `json:"itens"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -91,7 +92,7 @@ func (h *OrcamentosHandler) CreateOrcamento(c *gin.Context) {
 
 	// Extrair número de telefone do JID (remove @c.us)
 	numeroTelefone := strings.Replace(req.ContatoID, "@c.us", "", 1)
-	
+
 	// Buscar ou criar contato baseado no número de telefone
 	var contato models.Contato
 	err := h.db.Where("numero_telefone = ?", numeroTelefone).First(&contato).Error
@@ -111,11 +112,11 @@ func (h *OrcamentosHandler) CreateOrcamento(c *gin.Context) {
 				return
 			}
 		}
-		
+
 		// Se contato não existe, criar um novo
 		contato = models.Contato{
 			NumeroTelefone:   numeroTelefone,
-			Nome:             &numeroTelefone, // Usar número como nome temporário
+			Nome:             &numeroTelefone,   // Usar número como nome temporário
 			SessaoWhatsappID: sessaoWhatsapp.ID, // Usar sessão padrão
 		}
 		if err := h.db.Create(&contato).Error; err != nil {
@@ -292,7 +293,7 @@ func (h *OrcamentosHandler) UpdateOrcamentoStatus(c *gin.Context) {
 	}
 
 	if err := h.db.Model(&orcamento).Updates(map[string]interface{}{
-		"status": req.Status,
+		"status":        req.Status,
 		"atualizado_em": time.Now(),
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao atualizar status"})
