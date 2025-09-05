@@ -125,3 +125,24 @@ func (s *AuthService) GetUserByID(userID string) (*models.Usuario, error) {
 	}
 	return &usuario, nil
 }
+
+// ResetPassword atualiza a senha do usuário
+func (s *AuthService) ResetPassword(email, hashedPassword string) error {
+	var usuario models.Usuario
+	
+	// Buscar usuário pelo email
+	if err := s.db.Where("email = ? AND ativo = ?", email, true).First(&usuario).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("usuário não encontrado")
+		}
+		return err
+	}
+
+	// Atualizar senha
+	usuario.Senha = hashedPassword
+	if err := s.db.Save(&usuario).Error; err != nil {
+		return err
+	}
+
+	return nil
+}

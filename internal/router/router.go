@@ -68,6 +68,7 @@ func Setup(container *services.Container) *gin.Engine {
 	public := r.Group("/api")
 	{
 		public.POST("/auth/login", authHandler.Login)
+		public.POST("/usuarios/reset-password", authHandler.ResetPassword)
 		public.GET("/health", func(c *gin.Context) {
 			c.JSON(200, gin.H{"status": "ok", "message": "TappyOne CRM API"})
 		})

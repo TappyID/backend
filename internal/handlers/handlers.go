@@ -44,6 +44,27 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// ResetPassword atualiza a senha do usuário
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req struct {
+		Email string `json:"email" binding:"required,email"`
+		Senha string `json:"senha" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err := h.authService.ResetPassword(req.Email, req.Senha)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Senha atualizada com sucesso"})
+}
+
 func (h *AuthHandler) Me(c *gin.Context) {
 	userID := c.GetString("user_id")
 	user, err := h.authService.GetUserByID(userID)

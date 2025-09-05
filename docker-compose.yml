@@ -44,7 +44,7 @@ services:
       - WAHA_DASHBOARD_URL=http://159.65.34.199:3001/dashboard
       - WAHA_GOWS_PATH=/app/gows
       - WAHA_GOWS_SOCKET=/tmp/gows.sock
-      - WAHA_MEDIA_POSTGRESQL_URL=postgresql://neondb_owner:npg_QGpk9iyaf2Jx@ep-wispy-sky-aclylzdt-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+      - WAHA_MEDIA_POSTGRESQL_URL=postgresql://postgres:postgres@postgres:5432/tappyone?sslmode=disable
       - WAHA_MEDIA_STORAGE=POSTGRESQL
       - WAHA_PRINT_QR=true
       - WAHA_WORKER_ID=tappyone-server
