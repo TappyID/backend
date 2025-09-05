@@ -27,7 +27,7 @@ func (h *OrcamentosHandler) ListOrcamentos(c *gin.Context) {
 	status := c.Query("status")
 
 	var orcamentos []models.Orcamento
-	query := h.db.Where("usuario_id = ?", userID).Preload("Itens")
+	query := h.db.Where("usuario_id = ?", userID).Preload("Itens").Preload("Contato")
 
 	if contatoJID != "" {
 		// Converter JID para número de telefone e buscar contato
@@ -223,7 +223,7 @@ func (h *OrcamentosHandler) UpdateOrcamento(c *gin.Context) {
 	}
 
 	// Recarregar dados atualizados
-	if err := h.db.Where("id = ?", orcamentoID).Preload("Itens").First(&orcamento).Error; err != nil {
+	if err := h.db.Where("id = ?", orcamentoID).Preload("Itens").Preload("Contato").First(&orcamento).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao recarregar orçamento"})
 		return
 	}
@@ -264,7 +264,7 @@ func (h *OrcamentosHandler) GetOrcamentosByContato(c *gin.Context) {
 
 	var orcamentos []models.Orcamento
 	if err := h.db.Where("usuario_id = ? AND contato_id = ?", userID, contatoID).
-		Preload("Itens").Order("data DESC").Find(&orcamentos).Error; err != nil {
+		Preload("Itens").Preload("Contato").Order("data DESC").Find(&orcamentos).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao buscar orçamentos do contato"})
 		return
 	}

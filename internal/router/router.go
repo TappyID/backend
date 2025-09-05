@@ -965,7 +965,7 @@ func Setup(container *services.Container) *gin.Engine {
 		wahaProxy.GET("/:session/auth/qr", whatsAppHandler.ProxyToWAHA)
 		wahaProxy.GET("/:session/qr", whatsAppHandler.ProxyToWAHA)
 		wahaProxy.GET("/:session/screenshot", whatsAppHandler.ProxyToWAHA)
-		
+
 		// Session routes
 		wahaProxy.GET("/sessions/:session", whatsAppHandler.ProxyToWAHA)
 		wahaProxy.POST("/sessions/:session/restart", whatsAppHandler.ProxyToWAHA)
